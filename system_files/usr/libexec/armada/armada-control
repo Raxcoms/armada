@@ -723,10 +723,13 @@ class PerfManager:
         state = armada_perf.read_state()
         override = state.get("override")
         if isinstance(override, dict) and self.pid_alive(override.get("pid")):
+            self.auto_hdr.restore(override.get("autoHdr") is True)
             if not self.arm_pidfd(override["pid"]):
                 self.auto_hdr.clear()
             self.refresh(keep_override=True)
         else:
+            if isinstance(override, dict):
+                self.auto_hdr.restore(override.get("autoHdr") is True)
             self.auto_hdr.clear()
             self.refresh()
 
@@ -753,6 +756,8 @@ class PerfManager:
                 merged = armada_game_tweaks.merged_settings(tweaks, old.get("appid"))
                 override = self.gamescope_layer(merged)
                 override.update({"appid": old.get("appid"), "pid": old["pid"]})
+                if old.get("autoHdr") is True and self.auto_hdr.active:
+                    override["autoHdr"] = True
                 state["override"] = override
         armada_perf.write_state(state)
 
@@ -787,7 +792,8 @@ class PerfManager:
     def game_exited(self, generation=None):
         if generation is not None and generation != self.pidfd_gen:
             return
-        self.auto_hdr.clear()
+        if self.auto_hdr.active:
+            self.auto_hdr.clear()
         self.disarm_pidfd()
         self.refresh()
 
@@ -835,11 +841,20 @@ class PerfManager:
         override.update({"appid": appid, "pid": session_pid})
         state = armada_perf.read_state()
         if self.arm_pidfd(session_pid):
+            auto_hdr_enabled = self.auto_hdr.supported and merged.get("autoHdr") is True
+            update_auto_hdr = auto_hdr_enabled or self.auto_hdr.active
+            if update_auto_hdr:
+                override["autoHdr"] = True
             state["override"] = override
             armada_perf.write_state(state)
-            self.auto_hdr.apply(merged.get("autoHdr") is True)
+            if update_auto_hdr:
+                self.auto_hdr.apply(auto_hdr_enabled)
+                if not self.auto_hdr.active:
+                    override.pop("autoHdr", None)
+                    armada_perf.write_state(state)
         else:
-            self.auto_hdr.clear()
+            if self.auto_hdr.active:
+                self.auto_hdr.clear()
         return {"applied": True}
 
     def reapply(self):

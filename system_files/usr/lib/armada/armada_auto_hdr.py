@@ -17,23 +17,27 @@ class AutoHdrController:
         self.supported = supported(env)
         self.command = command
         self.available = None
-        self.active = None  # None means Gamescope state is unknown.
+        self.active = False
+
+    def restore(self, enabled):
+        self.active = self.supported and bool(enabled)
 
     def apply(self, enabled):
         enabled = bool(enabled)
-        if not self.supported or (not enabled and self.active is False):
-            return
+        if not self.supported or enabled == self.active:
+            return self.active
         if not self.control_available():
-            return
+            return self.active
         try:
             self.command(CONTROL, str(int(enabled)))
         except (OSError, subprocess.SubprocessError):
             pass
         else:
             self.active = enabled
+        return self.active
 
     def clear(self):
-        self.apply(False)
+        return self.apply(False)
 
     def control_available(self):
         if self.available is True:
