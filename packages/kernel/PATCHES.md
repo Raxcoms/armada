@@ -409,6 +409,12 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `patches/1021-wifi-ath12k-convert-scan-timeout-to-wiphy-delayed-work.patch`
   source: https://lkml.iu.edu/2609.1/17957.html
   upstream: https://lkml.iu.edu/2609.1/17957.html
+- `patches/1030-media-iris-send-the-stream-POC-type.patch`
+  source: armada
+  upstream: local
+- `patches/1031-media-iris-stop-AV1-tier-overwriting-HEVC-tier.patch`
+  source: armada
+  upstream: local
 - `patches/0500-ROCKNIX-set-boot-fanspeed.patch`
   source: https://github.com/ROCKNIX/distribution/blob/bcf3b5bc574990b96543484575b06f912153a715/projects/ROCKNIX/devices/SM8550/patches/linux/0500-ROCKNIX-set-boot-fanspeed.patch
   upstream: unknown
@@ -727,6 +733,9 @@ no equivalent submission was found, or a permanent URL to the upstream submissio
 - `dts/sm8250-mangmi-air-y-pro.dts`
   source: https://github.com/ROCKNIX/distribution/blob/807c74fc46c124891d8aa9b57a68533d38e9a6b2/projects/ROCKNIX/devices/SM8250/linux/dts/qcom/sm8250-mangmi-air-y-pro.dts
   notes: Imported verbatim from ROCKNIX; SHA-256 `d98f1104f4fe29f9bf8c94692beb491e840332a851f1f6994f015973ba24c018`.
+- `dts/sm8250-mangmi-air-y-pro.dts.patch`
+  source: armada
+  notes: Exposes the two centre-logo RGB LEDs on left AW20036 channels 24–29, verified on Air Y Pro hardware.
 - `dts/sm8250-mangmi-pocket-max.dts`
   source: https://github.com/ROCKNIX/distribution/blob/807c74fc46c124891d8aa9b57a68533d38e9a6b2/projects/ROCKNIX/devices/SM8250/linux/dts/qcom/sm8250-mangmi-pocket-max.dts
   notes: Imported verbatim from ROCKNIX; SHA-256 `f6128a97cf510fcd9ecf568a2e512c3f6f4210ad43e4fb1f542740f4b140dfd2`.
