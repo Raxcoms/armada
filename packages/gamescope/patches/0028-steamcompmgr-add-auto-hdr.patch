@@ -49,36 +49,27 @@ index d53c2c4..627e09d 100644
                  bNeedsFullComposite |= ColorspaceIsHDR( pFrameInfo->layers.get( 0 ).colorspace );
 diff --git a/src/auto_hdr.h b/src/auto_hdr.h
 new file mode 100644
-index 0000000..8ad0eca
+index 0000000..b5bef7d
 --- /dev/null
 +++ b/src/auto_hdr.h
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,15 @@
 +#pragma once
 +
 +namespace gamescope
 +{
-+    constexpr bool AutoHdrRequestsOutput( bool hdrEnabled, bool autoHdrEnabled )
-+    {
-+        return hdrEnabled || autoHdrEnabled;
-+    }
-+
-+    constexpr bool AutoHdrUsesContentDrivenOutput( bool contentDriven, bool autoHdrEnabled )
-+    {
-+        return contentDriven && !autoHdrEnabled;
-+    }
-+
-+    constexpr bool AutoHdrUsesItm( bool autoHdrEnabled, bool hdrOutputEnabled, bool baseLayerIsHdr, bool baseLayerIsEligible )
-+    {
-+        return autoHdrEnabled && hdrOutputEnabled && !baseLayerIsHdr && baseLayerIsEligible;
-+    }
-+
-+    constexpr bool AutoHdrPresentationWantsHdr( bool nativeHdr, bool autoHdrRendered )
-+    {
-+        return nativeHdr || autoHdrRendered;
-+    }
++	constexpr bool AutoHdrUsesItm(
++		bool autoHdrEnabled,
++		bool hdrOutputEnabled,
++		bool baseLayerIsHdr,
++		bool baseLayerIsEligible,
++		bool legacyItmEnabled )
++	{
++		return autoHdrEnabled && hdrOutputEnabled && !baseLayerIsHdr &&
++			baseLayerIsEligible && !legacyItmEnabled;
++	}
 +}
 diff --git a/src/rendervulkan.cpp b/src/rendervulkan.cpp
-index 042b79f..8d6baf7 100644
+index 042b79f..c04a8bb 100644
 --- a/src/rendervulkan.cpp
 +++ b/src/rendervulkan.cpp
 @@ -1117,9 +1117,9 @@ VkSampler CVulkanDevice::sampler( SamplerState key )
@@ -86,7 +77,7 @@ index 042b79f..8d6baf7 100644
  }
  
 -VkPipeline CVulkanDevice::compilePipeline(uint32_t layerCount, uint32_t ycbcrMask, ShaderType type, uint32_t blur_layer_count, uint32_t composite_debug, uint32_t colorspace_mask, uint32_t output_eotf, bool itm_enable)
-+VkPipeline CVulkanDevice::compilePipeline(uint32_t layerCount, uint32_t ycbcrMask, ShaderType type, uint32_t blur_layer_count, uint32_t composite_debug, uint32_t colorspace_mask, uint32_t output_eotf, bool itm_enable, uint32_t auto_hdr_itm_layer_mask)
++VkPipeline CVulkanDevice::compilePipeline(uint32_t layerCount, uint32_t ycbcrMask, ShaderType type, uint32_t blur_layer_count, uint32_t composite_debug, uint32_t colorspace_mask, uint32_t output_eotf, bool itm_enable, bool auto_hdr_itm_enable)
  {
 -	const std::array<VkSpecializationMapEntry, 7> specializationEntries = {{
 +	const std::array<VkSpecializationMapEntry, 8> specializationEntries = {{
@@ -98,7 +89,7 @@ index 042b79f..8d6baf7 100644
  			.size       = sizeof(uint32_t)
  		},
 +		{
-+			.constantID = 8,
++			.constantID = VKR_AUTO_HDR_ITM_SPEC_CONSTANT_ID,
 +			.offset     = sizeof(uint32_t) * 7,
 +			.size       = sizeof(uint32_t)
 +		},
@@ -109,7 +100,7 @@ index 042b79f..8d6baf7 100644
  		uint32_t colorspace_mask;
  		uint32_t output_eotf;
  		uint32_t itm_enable;
-+		uint32_t auto_hdr_itm_layer_mask;
++		uint32_t auto_hdr_itm_enable;
  	} specializationData = {
  		.layerCount   = layerCount,
  		.ycbcrMask    = ycbcrMask,
@@ -117,7 +108,7 @@ index 042b79f..8d6baf7 100644
  		.colorspace_mask = colorspace_mask,
  		.output_eotf = output_eotf,
  		.itm_enable = itm_enable,
-+		.auto_hdr_itm_layer_mask = auto_hdr_itm_layer_mask,
++		.auto_hdr_itm_enable = auto_hdr_itm_enable,
  	};
  
  	VkSpecializationInfo specializationInfo = {
@@ -126,7 +117,7 @@ index 042b79f..8d6baf7 100644
  						continue;
  
 -					VkPipeline newPipeline = compilePipeline(layerCount, ycbcrMask, info.shaderType, blur_layers, info.compositeDebug, info.colorspaceMask, info.outputEOTF, info.itmEnable);
-+					VkPipeline newPipeline = compilePipeline(layerCount, ycbcrMask, info.shaderType, blur_layers, info.compositeDebug, info.colorspaceMask, info.outputEOTF, info.itmEnable, info.autoHdrItmLayerMask);
++					VkPipeline newPipeline = compilePipeline(layerCount, ycbcrMask, info.shaderType, blur_layers, info.compositeDebug, info.colorspaceMask, info.outputEOTF, info.itmEnable, info.autoHdrItmEnable);
  					{
  						std::lock_guard<std::mutex> lock(m_pipelineMutex);
  						PipelineInfo_t key = {info.shaderType, layerCount, ycbcrMask, blur_layers, info.compositeDebug};
@@ -135,7 +126,7 @@ index 042b79f..8d6baf7 100644
  extern bool g_bSteamIsActiveWindow;
  
 -VkPipeline CVulkanDevice::pipeline(ShaderType type, uint32_t layerCount, uint32_t ycbcrMask, uint32_t blur_layers, uint32_t colorspace_mask, uint32_t output_eotf, bool itm_enable)
-+VkPipeline CVulkanDevice::pipeline(ShaderType type, uint32_t layerCount, uint32_t ycbcrMask, uint32_t blur_layers, uint32_t colorspace_mask, uint32_t output_eotf, bool itm_enable, uint32_t auto_hdr_itm_layer_mask)
++VkPipeline CVulkanDevice::pipeline(ShaderType type, uint32_t layerCount, uint32_t ycbcrMask, uint32_t blur_layers, uint32_t colorspace_mask, uint32_t output_eotf, bool itm_enable, bool auto_hdr_itm_enable)
  {
  	uint32_t effective_debug = g_uCompositeDebug;
  	if ( g_bSteamIsActiveWindow )
@@ -143,12 +134,12 @@ index 042b79f..8d6baf7 100644
  
  	std::lock_guard<std::mutex> lock(m_pipelineMutex);
 -	PipelineInfo_t key = {type, layerCount, ycbcrMask, blur_layers, effective_debug, colorspace_mask, output_eotf, itm_enable};
-+	PipelineInfo_t key = {type, layerCount, ycbcrMask, blur_layers, effective_debug, colorspace_mask, output_eotf, itm_enable, auto_hdr_itm_layer_mask};
++	PipelineInfo_t key = {type, layerCount, ycbcrMask, blur_layers, effective_debug, colorspace_mask, output_eotf, itm_enable, auto_hdr_itm_enable};
  	auto search = m_pipelineMap.find(key);
  	if (search == m_pipelineMap.end())
  	{
 -		VkPipeline result = compilePipeline(layerCount, ycbcrMask, type, blur_layers, effective_debug, colorspace_mask, output_eotf, itm_enable);
-+		VkPipeline result = compilePipeline(layerCount, ycbcrMask, type, blur_layers, effective_debug, colorspace_mask, output_eotf, itm_enable, auto_hdr_itm_layer_mask);
++		VkPipeline result = compilePipeline(layerCount, ycbcrMask, type, blur_layers, effective_debug, colorspace_mask, output_eotf, itm_enable, auto_hdr_itm_enable);
  		m_pipelineMap[key] = result;
  		return result;
  	}
@@ -156,7 +147,7 @@ index 042b79f..8d6baf7 100644
  	for (uint32_t i = 0; i < EOTF_Count; i++)
  		cmdBuffer->bindColorMgmtLuts(i, frameInfo->shaperLut[i], frameInfo->lut3D[i]);
  
-+	const uint32_t autoHdrItmLayerMask = steamcompmgr_auto_hdr_itm_layer_mask( frameInfo );
++	const bool autoHdrItmEnabled = steamcompmgr_auto_hdr_itm_enabled( frameInfo );
 +
  	if ( frameInfo->useFSRLayer0 || frameInfo->useSGSRLayer0 )
  	{
@@ -166,7 +157,7 @@ index 042b79f..8d6baf7 100644
  			CompositeTimingMid( cmdBuffer.get(), *oTimingSlot );
  
 -		cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_RCAS, frameInfo->layers.count(), frameInfo->ycbcrMask() & ~1, 0u, frameInfo->colorspaceMask(), outputTF ));
-+		cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_RCAS, frameInfo->layers.count(), frameInfo->ycbcrMask() & ~1, 0u, frameInfo->colorspaceMask(), outputTF, g_bHDRItmEnable, autoHdrItmLayerMask ));
++		cmdBuffer->bindPipeline(g_device.pipeline(SHADER_TYPE_RCAS, frameInfo->layers.count(), frameInfo->ycbcrMask() & ~1, 0u, frameInfo->colorspaceMask(), outputTF, g_bHDRItmEnable, autoHdrItmEnabled ));
  		bind_all_layers(cmdBuffer.get(), frameInfo);
  		cmdBuffer->bindTexture(0, g_output.tmpOutput);
  		cmdBuffer->setTextureSrgb(0, true);
@@ -175,7 +166,7 @@ index 042b79f..8d6baf7 100644
  		nisFrameInfo.layers.get( 0 ).scale.y = 1.0f;
  
 -		cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, nisFrameInfo.layers.count(), nisFrameInfo.ycbcrMask(), 0u, nisFrameInfo.colorspaceMask(), outputTF ));
-+		cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, nisFrameInfo.layers.count(), nisFrameInfo.ycbcrMask(), 0u, nisFrameInfo.colorspaceMask(), outputTF, g_bHDRItmEnable, autoHdrItmLayerMask ));
++		cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, nisFrameInfo.layers.count(), nisFrameInfo.ycbcrMask(), 0u, nisFrameInfo.colorspaceMask(), outputTF, g_bHDRItmEnable, autoHdrItmEnabled ));
  		bind_all_layers(cmdBuffer.get(), &nisFrameInfo);
  		cmdBuffer->bindTarget(compositeImage);
  		cmdBuffer->uploadConstants<BlitPushData_t>(&nisFrameInfo, uOutputRotation);
@@ -184,7 +175,7 @@ index 042b79f..8d6baf7 100644
  
  		type = frameInfo->blurLayer0 == BLUR_MODE_COND ? SHADER_TYPE_BLUR_COND : SHADER_TYPE_BLUR;
 -		cmdBuffer->bindPipeline(g_device.pipeline(type, frameInfo->layers.count(), frameInfo->ycbcrMask(), blur_layer_count, frameInfo->colorspaceMask(), outputTF ));
-+		cmdBuffer->bindPipeline(g_device.pipeline(type, frameInfo->layers.count(), frameInfo->ycbcrMask(), blur_layer_count, frameInfo->colorspaceMask(), outputTF, g_bHDRItmEnable, autoHdrItmLayerMask ));
++		cmdBuffer->bindPipeline(g_device.pipeline(type, frameInfo->layers.count(), frameInfo->ycbcrMask(), blur_layer_count, frameInfo->colorspaceMask(), outputTF, g_bHDRItmEnable, autoHdrItmEnabled ));
  		bind_all_layers(cmdBuffer.get(), frameInfo);
  		cmdBuffer->bindTarget(compositeImage);
  		cmdBuffer->bindTexture(VKR_BLUR_EXTRA_SLOT, g_output.tmpOutput);
@@ -193,13 +184,12 @@ index 042b79f..8d6baf7 100644
  	else
  	{
 -		cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, frameInfo->layers.count(), frameInfo->ycbcrMask(), 0u, frameInfo->colorspaceMask(), outputTF ));
-+		cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, frameInfo->layers.count(), frameInfo->ycbcrMask(), 0u, frameInfo->colorspaceMask(), outputTF, g_bHDRItmEnable, autoHdrItmLayerMask ));
++		cmdBuffer->bindPipeline( g_device.pipeline(SHADER_TYPE_BLIT, frameInfo->layers.count(), frameInfo->ycbcrMask(), 0u, frameInfo->colorspaceMask(), outputTF, g_bHDRItmEnable, autoHdrItmEnabled ));
  		bind_all_layers(cmdBuffer.get(), frameInfo);
  		cmdBuffer->bindTarget(compositeImage);
  		cmdBuffer->uploadConstants<BlitPushData_t>(frameInfo, uOutputRotation);
-
 diff --git a/src/rendervulkan.hpp b/src/rendervulkan.hpp
-index e0fe28d..dd13d7c 100644
+index e0fe28d..b24c925 100644
 --- a/src/rendervulkan.hpp
 +++ b/src/rendervulkan.hpp
 @@ -291,6 +291,7 @@ struct FrameInfo_t
@@ -214,7 +204,7 @@ index e0fe28d..dd13d7c 100644
  	uint32_t colorspaceMask;
  	uint32_t outputEOTF;
  	bool itmEnable;
-+	uint32_t autoHdrItmLayerMask;
++	bool autoHdrItmEnable;
  
  	bool operator==(const PipelineInfo_t& o) const {
  		return
@@ -224,7 +214,7 @@ index e0fe28d..dd13d7c 100644
  		outputEOTF == o.outputEOTF &&
 -		itmEnable == o.itmEnable;
 +		itmEnable == o.itmEnable &&
-+		autoHdrItmLayerMask == o.autoHdrItmLayerMask;
++		autoHdrItmEnable == o.autoHdrItmEnable;
  	}
  };
  
@@ -232,7 +222,7 @@ index e0fe28d..dd13d7c 100644
  			hash = hash_combine(hash, k.colorspaceMask);
  			hash = hash_combine(hash, k.outputEOTF);
  			hash = hash_combine(hash, k.itmEnable);
-+			hash = hash_combine(hash, k.autoHdrItmLayerMask);
++			hash = hash_combine(hash, k.autoHdrItmEnable);
  			return hash;
  		}
  	};
@@ -241,7 +231,7 @@ index e0fe28d..dd13d7c 100644
  
  	VkSampler sampler(SamplerState key);
 -	VkPipeline pipeline(ShaderType type, uint32_t layerCount = 1, uint32_t ycbcrMask = 0, uint32_t blur_layers = 0, uint32_t colorspace_mask = 0, uint32_t output_eotf = EOTF_Gamma22, bool itm_enable = false);
-+	VkPipeline pipeline(ShaderType type, uint32_t layerCount = 1, uint32_t ycbcrMask = 0, uint32_t blur_layers = 0, uint32_t colorspace_mask = 0, uint32_t output_eotf = EOTF_Gamma22, bool itm_enable = false, uint32_t auto_hdr_itm_layer_mask = 0);
++	VkPipeline pipeline(ShaderType type, uint32_t layerCount = 1, uint32_t ycbcrMask = 0, uint32_t blur_layers = 0, uint32_t colorspace_mask = 0, uint32_t output_eotf = EOTF_Gamma22, bool itm_enable = false, bool auto_hdr_itm_enable = false);
  	int32_t findMemoryType( VkMemoryPropertyFlags properties, uint32_t requiredTypeBits );
  	std::unique_ptr<CVulkanCmdBuffer> commandBuffer();
  	uint64_t submit( std::unique_ptr<CVulkanCmdBuffer> cmdBuf);
@@ -250,12 +240,12 @@ index e0fe28d..dd13d7c 100644
  	bool createShaders();
  	bool createScratchResources();
 -	VkPipeline compilePipeline(uint32_t layerCount, uint32_t ycbcrMask, ShaderType type, uint32_t blur_layer_count, uint32_t composite_debug, uint32_t colorspace_mask, uint32_t output_eotf, bool itm_enable);
-+	VkPipeline compilePipeline(uint32_t layerCount, uint32_t ycbcrMask, ShaderType type, uint32_t blur_layer_count, uint32_t composite_debug, uint32_t colorspace_mask, uint32_t output_eotf, bool itm_enable, uint32_t auto_hdr_itm_layer_mask);
++	VkPipeline compilePipeline(uint32_t layerCount, uint32_t ycbcrMask, ShaderType type, uint32_t blur_layer_count, uint32_t composite_debug, uint32_t colorspace_mask, uint32_t output_eotf, bool itm_enable, bool auto_hdr_itm_enable);
  	void compileAllPipelines(std::stop_token st);
  
  	VkDevice m_device = nullptr;
 diff --git a/src/shaders/composite.h b/src/shaders/composite.h
-index a62324e..496708b 100644
+index a62324e..d735f27 100644
 --- a/src/shaders/composite.h
 +++ b/src/shaders/composite.h
 @@ -92,20 +92,23 @@ void compositing_debug(uvec2 coord, uint rotation) {
@@ -268,7 +258,7 @@ index a62324e..496708b 100644
          return color;
  
 -    if (c_itm_enable)
-+    bool autoHdrItm = layer_uses_auto_hdr_itm(colorspaceLayerIdx);
++    bool autoHdrItm = c_auto_hdr_itm_enable && colorspaceLayerIdx == 0;
 +    if (c_itm_enable || autoHdrItm)
      {
          color = bt2446a_inverse_tonemapping(color, u_itmSdrNits, u_itmTargetNits);
@@ -306,30 +296,31 @@ index a62324e..496708b 100644
      return color;
  }
 diff --git a/src/shaders/descriptor_set.h b/src/shaders/descriptor_set.h
-index f2b8527..b626d05 100644
+index f2b8527..a8ce2df 100644
 --- a/src/shaders/descriptor_set.h
 +++ b/src/shaders/descriptor_set.h
 @@ -8,6 +8,7 @@ layout(constant_id = 3) const int  c_blur_layer_count = 0;
  layout(constant_id = 4) const uint c_colorspaceMask = 0;
  layout(constant_id = 5) const uint c_output_eotf = 0;
  layout(constant_id = 7) const bool c_itm_enable = false;
-+layout(constant_id = 8) const uint c_auto_hdr_itm_layer_mask = 0;
++layout(constant_id = VKR_AUTO_HDR_ITM_SPEC_CONSTANT_ID) const bool c_auto_hdr_itm_enable = false;
  
  const int colorspace_linear = 0;
  const int colorspace_sRGB = 1;
-@@ -40,6 +41,10 @@ bool checkDebugFlag(uint flag) {
-     return (c_compositing_debug & flag) != 0;
- }
+diff --git a/src/shaders/descriptor_set_constants.h b/src/shaders/descriptor_set_constants.h
+index e81b006..676bdc6 100644
+--- a/src/shaders/descriptor_set_constants.h
++++ b/src/shaders/descriptor_set_constants.h
+@@ -4,6 +4,7 @@
+ #define VKR_TARGET_SLOTS 2u
+ #define VKR_SAMPLER_SLOTS 16u
+ #define VKR_MAX_LAYERS 8u
++#define VKR_AUTO_HDR_ITM_SPEC_CONSTANT_ID 8
  
-+bool layer_uses_auto_hdr_itm(uint layerIdx) {
-+    return (c_auto_hdr_itm_layer_mask & (1u << layerIdx)) != 0;
-+}
-+
- uint get_layer_colorspace(uint layerIdx) {
-     return bitfieldExtract(c_colorspaceMask, int(layerIdx) * colorspace_max_bits, colorspace_max_bits);
- }
+ #define VKR_BLUR_EXTRA_SLOT       VKR_MAX_LAYERS
+ #define VKR_NIS_COEF_SCALER_SLOT (VKR_BLUR_EXTRA_SLOT + 1u)
 diff --git a/src/steamcompmgr.cpp b/src/steamcompmgr.cpp
-index 373d697..1ee9f52 100644
+index 373d697..5ab8e37 100644
 --- a/src/steamcompmgr.cpp
 +++ b/src/steamcompmgr.cpp
 @@ -30,6 +30,7 @@
@@ -340,7 +331,7 @@ index 373d697..1ee9f52 100644
  #include "HDRGamma22.h"
  #include "HDRTonemap.h"
  #include "gamescope_shared.h"
-@@ -494,10 +495,29 @@ bool g_bVRRInUse_CachedValue = false;
+@@ -494,10 +495,30 @@ bool g_bVRRInUse_CachedValue = false;
  bool g_bSupportsHDR_CachedValue = false;
  bool g_bForceHDR10OutputDebug = false;
  gamescope::ConVar<bool> cv_hdr_enabled{ "hdr_enabled", false, "Whether or not HDR is enabled if it is available." };
@@ -350,27 +341,28 @@ index 373d697..1ee9f52 100644
 +static bool g_bAutoHdrFramePresented = false;
  int g_nCurrentRefreshRate_CachedValue = 0;
  
-+uint32_t steamcompmgr_auto_hdr_itm_layer_mask( const FrameInfo_t *pFrameInfo )
++bool steamcompmgr_auto_hdr_itm_enabled( const FrameInfo_t *pFrameInfo )
 +{
-+	if ( g_bHDRItmEnable || !pFrameInfo->layers.count() )
-+		return 0;
++	if ( !pFrameInfo->layers.count() )
++		return false;
 +
 +	return gamescope::AutoHdrUsesItm(
 +		cv_armada_auto_hdr,
 +		g_bOutputHDREnabled,
 +		ColorspaceIsHDR( pFrameInfo->layers.get( 0 ).colorspace ),
-+		pFrameInfo->autoHdrEligible ) ? 1u : 0u;
++		pFrameInfo->autoHdrEligible,
++		g_bHDRItmEnable );
 +}
 +
 +bool steamcompmgr_should_enable_hdr_itm( const FrameInfo_t *pFrameInfo )
 +{
-+	return g_bHDRItmEnable || steamcompmgr_auto_hdr_itm_layer_mask( pFrameInfo ) != 0;
++	return g_bHDRItmEnable || steamcompmgr_auto_hdr_itm_enabled( pFrameInfo );
 +}
 +
  // Follows the panel backlight over sysfs for panels that ignore it in PQ. steamcompmgr thread only.
  class CBacklightWatcher final : public gamescope::IWaitable
  {
-@@ -3205,6 +3225,8 @@ paint_all( global_focus_t *pFocus, bool async )
+@@ -3205,6 +3226,8 @@ paint_all( global_focus_t *pFocus, bool async )
  	frameInfo.eUpscaleFilter = pFocus->eUpscaleFilter;
  	frameInfo.eUpscaleScaler = pFocus->eUpscaleScaler;
  	frameInfo.nUpscaleSharpness = pFocus->nUpscaleSharpness;
@@ -379,11 +371,11 @@ index 373d697..1ee9f52 100644
  
  	// With no window a lease companion presents an empty frame to power its output down.
  	if ( g_sDrmLeaseClientSocket && !w )
-@@ -3565,11 +3587,19 @@ paint_all( global_focus_t *pFocus, bool async )
+@@ -3565,11 +3588,19 @@ paint_all( global_focus_t *pFocus, bool async )
  		}
  	}
  
-+	const bool bAutoHdrFrame = steamcompmgr_auto_hdr_itm_layer_mask( &frameInfo ) != 0;
++	const bool bAutoHdrFrame = steamcompmgr_auto_hdr_itm_enabled( &frameInfo );
 +	const bool bPrimaryFocus = pFocus == GetCurrentFocus();
 +
  	if ( pConnector && pConnector->Present( &frameInfo, async ) != 0 )
@@ -399,45 +391,42 @@ index 373d697..1ee9f52 100644
  	std::optional<gamescope::GamescopeScreenshotInfo> oScreenshotInfo =
  		gamescope::CScreenshotManager::Get().ProcessPendingScreenshot();
  
-@@ -10350,13 +10380,15 @@ steamcompmgr_main(int argc, char **argv)
+@@ -10350,13 +10381,14 @@ steamcompmgr_main(int argc, char **argv)
  
  		// Capability is advertised to clients regardless of the live "active"
  		// state below, so games can request HDR while the panel is idling in SDR.
 -		const bool bOutputHDRCapable = (g_bSupportsHDR_CachedValue || g_bForceHDR10OutputDebug) && cv_hdr_enabled;
 +		const bool bOutputHDRCapable = (g_bSupportsHDR_CachedValue || g_bForceHDR10OutputDebug) &&
-+			gamescope::AutoHdrRequestsOutput( cv_hdr_enabled, cv_armada_auto_hdr );
++			( cv_hdr_enabled || cv_armada_auto_hdr );
  
  		{
  			gamescope::IBackendConnector *pConn = GetBackend()->GetCurrentConnector();
  			const bool bContentDriven = bOutputHDRCapable && !g_bForceHDR10OutputDebug &&
 -				( cv_hdr_content_driven ||
 -				  ( pConn && pConn->GetHDRInfo().bContentDrivenHDR ) );
-+				gamescope::AutoHdrUsesContentDrivenOutput(
-+					cv_hdr_content_driven || ( pConn && pConn->GetHDRInfo().bContentDrivenHDR ),
-+					cv_armada_auto_hdr );
++				( cv_hdr_content_driven || ( pConn && pConn->GetHDRInfo().bContentDrivenHDR ) ) &&
++				!cv_armada_auto_hdr;
  
  			bool bOutputHDRActive = bOutputHDRCapable;
  			if ( bContentDriven )
-@@ -10577,7 +10609,8 @@ steamcompmgr_main(int argc, char **argv)
+@@ -10577,7 +10609,7 @@ steamcompmgr_main(int argc, char **argv)
  					app_hdr_metadata = pCurrentFocus->HeldCommits[HELD_COMMIT_BASE]->feedback->hdr_metadata_blob;
  			}
  
 -			bool app_wants_hdr = ColorspaceIsHDR( current_app_colorspace );
-+			bool app_wants_hdr = gamescope::AutoHdrPresentationWantsHdr(
-+				ColorspaceIsHDR( current_app_colorspace ), g_bAutoHdrFramePresented );
++			bool app_wants_hdr = ColorspaceIsHDR( current_app_colorspace ) || g_bAutoHdrFramePresented;
  
  			if ( app_wants_hdr != g_bAppWantsHDRCached )
  			{
-
 diff --git a/src/steamcompmgr.hpp b/src/steamcompmgr.hpp
-index c1d1ab0..1ef3eec 100644
+index c1d1ab0..d0a963c 100644
 --- a/src/steamcompmgr.hpp
 +++ b/src/steamcompmgr.hpp
 @@ -45,6 +45,9 @@ static const uint32_t g_zposMuraCorrection = 5;
  extern bool g_bHDRItmEnable;
  extern bool g_bForceHDRSupportDebug;
  
-+uint32_t steamcompmgr_auto_hdr_itm_layer_mask( const FrameInfo_t *pFrameInfo );
++bool steamcompmgr_auto_hdr_itm_enabled( const FrameInfo_t *pFrameInfo );
 +bool steamcompmgr_should_enable_hdr_itm( const FrameInfo_t *pFrameInfo );
 +
  extern EStreamColorspace g_ForcedNV12ColorSpace;
@@ -466,10 +455,10 @@ index 4e3bdd9..695eca3 100644
  test('mangoapp_control', gamescope_tests, args: ['[mangoapp_control]'])
 diff --git a/tests/test_auto_hdr.cpp b/tests/test_auto_hdr.cpp
 new file mode 100644
-index 0000000..8c3d515
+index 0000000..bcec2dd
 --- /dev/null
 +++ b/tests/test_auto_hdr.cpp
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,19 @@
 +#include <catch2/catch_test_macros.hpp>
 +
 +#include "auto_hdr.h"
@@ -478,30 +467,14 @@ index 0000000..8c3d515
 +
 +TEST_CASE( "Auto HDR is opt-in", "[auto_hdr]" )
 +{
-+	REQUIRE_FALSE( AutoHdrRequestsOutput( false, false ) );
-+	REQUIRE_FALSE( AutoHdrUsesItm( false, true, false, true ) );
-+}
-+
-+TEST_CASE( "Auto HDR keeps existing HDR controls additive", "[auto_hdr]" )
-+{
-+	REQUIRE( AutoHdrRequestsOutput( true, false ) );
-+	REQUIRE( AutoHdrRequestsOutput( false, true ) );
-+	REQUIRE( AutoHdrUsesContentDrivenOutput( true, false ) );
++	REQUIRE_FALSE( AutoHdrUsesItm( false, true, false, true, false ) );
 +}
 +
 +TEST_CASE( "Auto HDR inverse tone maps only SDR base layers", "[auto_hdr]" )
 +{
-+	REQUIRE_FALSE( AutoHdrUsesContentDrivenOutput( true, true ) );
-+	REQUIRE_FALSE( AutoHdrUsesItm( true, false, false, true ) );
-+	REQUIRE_FALSE( AutoHdrUsesItm( true, true, false, false ) );
-+	REQUIRE( AutoHdrUsesItm( true, true, false, true ) );
-+	REQUIRE_FALSE( AutoHdrUsesItm( true, true, true, true ) );
++	REQUIRE_FALSE( AutoHdrUsesItm( true, false, false, true, false ) );
++	REQUIRE_FALSE( AutoHdrUsesItm( true, true, false, false, false ) );
++	REQUIRE( AutoHdrUsesItm( true, true, false, true, false ) );
++	REQUIRE_FALSE( AutoHdrUsesItm( true, true, true, true, false ) );
++	REQUIRE_FALSE( AutoHdrUsesItm( true, true, false, true, true ) );
 +}
-+
-+TEST_CASE( "Auto HDR is reported as HDR only after rendering", "[auto_hdr]" )
-+{
-+	REQUIRE_FALSE( AutoHdrPresentationWantsHdr( false, false ) );
-+	REQUIRE( AutoHdrPresentationWantsHdr( true, false ) );
-+	REQUIRE( AutoHdrPresentationWantsHdr( false, true ) );
-+}
-
