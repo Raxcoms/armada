@@ -20,11 +20,12 @@ class AutoHdrController:
         self.active = False
 
     def restore(self, enabled):
-        self.active = self.supported and bool(enabled)
+        self.active = False
+        return self.apply(enabled)
 
-    def apply(self, enabled):
+    def apply(self, enabled, force=False):
         enabled = bool(enabled)
-        if not self.supported or enabled == self.active:
+        if not self.supported or (not force and enabled == self.active):
             return self.active
         if not self.control_available():
             return self.active
@@ -36,8 +37,8 @@ class AutoHdrController:
             self.active = enabled
         return self.active
 
-    def clear(self):
-        return self.apply(False)
+    def clear(self, force=False):
+        return self.apply(False, force)
 
     def control_available(self):
         if self.available is True:

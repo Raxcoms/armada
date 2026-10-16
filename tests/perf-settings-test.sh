@@ -592,7 +592,8 @@ restored_auto_hdr = control.armada_auto_hdr.AutoHdrController(
 )
 restored_auto_hdr.restore(True)
 restored_auto_hdr.clear()
-check("restored auto hdr is cleared", restored_commands == [("help",), AUTO_HDR_DISABLE])
+check("restored auto hdr is reapplied and cleared",
+      restored_commands == [("help",), AUTO_HDR_ENABLE, AUTO_HDR_DISABLE])
 
 for nits in ("0", "not-a-number", None):
     commands = []
@@ -658,12 +659,12 @@ class AutoHdrRecorder:
         self.applied = []
         self.clears = 0
 
-    def apply(self, enabled):
+    def apply(self, enabled, force=False):
         self.applied.append(enabled)
         self.active = bool(enabled)
         return self.active
 
-    def clear(self):
+    def clear(self, force=False):
         self.clears += 1
         self.active = False
         return self.active
@@ -796,10 +797,11 @@ try:
     ap.device_env = lambda: {**ENV, "ARMADA_HDR_NITS": HDR_CAPABLE_NITS}
     recovered_manager = control.PerfManager(recovered_selector)
     check("restart preserves an active game's auto hdr state",
-          not recovered_auto_hdr_commands)
+           recovered_auto_hdr_commands == [("help",), AUTO_HDR_ENABLE])
     recovered_manager.game_exited()
     check("restart clears auto hdr when the active game exits",
-          recovered_auto_hdr_commands == [("help",), AUTO_HDR_DISABLE])
+           recovered_auto_hdr_commands == [
+               ("help",), AUTO_HDR_ENABLE, AUTO_HDR_DISABLE])
 finally:
     control.gamescope_control = real_gamescope_control
     ap.device_env = real_device_env

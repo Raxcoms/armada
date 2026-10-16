@@ -723,14 +723,14 @@ class PerfManager:
         state = armada_perf.read_state()
         override = state.get("override")
         if isinstance(override, dict) and self.pid_alive(override.get("pid")):
-            self.auto_hdr.restore(override.get("autoHdr") is True)
-            if not self.arm_pidfd(override["pid"]):
-                self.auto_hdr.clear()
+            if self.arm_pidfd(override["pid"]):
+                self.auto_hdr.restore(override.get("autoHdr") is True)
+            elif override.get("autoHdr") is True:
+                self.auto_hdr.clear(force=True)
             self.refresh(keep_override=True)
         else:
-            if isinstance(override, dict):
-                self.auto_hdr.restore(override.get("autoHdr") is True)
-            self.auto_hdr.clear()
+            if isinstance(override, dict) and override.get("autoHdr") is True:
+                self.auto_hdr.clear(force=True)
             self.refresh()
 
     def pid_alive(self, pid):
