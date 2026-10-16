@@ -284,12 +284,12 @@ index 0000000..ee04e42
 +	constexpr bool AutoHdrIsEligible(
 +		bool primaryOutput,
 +		bool autoHdrEnabled,
-+		bool hdrOutputEnabled,
++		bool hdrOutputCapable,
 +		bool baseLayerIsHdr,
 +		bool baseLayerIsEligible,
 +		bool legacyItmEnabled )
 +	{
-+		return primaryOutput && autoHdrEnabled && hdrOutputEnabled && !baseLayerIsHdr &&
++		return primaryOutput && autoHdrEnabled && hdrOutputCapable && !baseLayerIsHdr &&
 +			baseLayerIsEligible && !legacyItmEnabled;
 +	}
 +
@@ -748,7 +748,7 @@ index 373d697..5997a97 100644
  gamescope::ConVar<bool> cv_tearing_enabled{ "tearing_enabled", false, "Whether or not tearing is enabled." };
  int g_nSteamMaxHeight = 0;
  bool g_bVRRCapable_CachedValue = false;
-@@ -494,10 +573,45 @@ bool g_bVRRInUse_CachedValue = false;
+@@ -494,10 +573,46 @@ bool g_bVRRInUse_CachedValue = false;
  bool g_bSupportsHDR_CachedValue = false;
  bool g_bForceHDR10OutputDebug = false;
  gamescope::ConVar<bool> cv_hdr_enabled{ "hdr_enabled", false, "Whether or not HDR is enabled if it is available." };
@@ -782,10 +782,11 @@ index 373d697..5997a97 100644
 +	if ( !pFrameInfo->layers.count() )
 +		return false;
 +
++	const bool hdrOutputCapable = g_bSupportsHDR_CachedValue || g_bForceHDR10OutputDebug;
 +	return g_AutoHdrDirectLuts.HasLuts() && gamescope::AutoHdrIsEligible(
 +		!g_sDrmLeaseClientSocket,
 +		cv_armada_auto_hdr,
-+		g_bOutputHDREnabled,
++		hdrOutputCapable,
 +		ColorspaceIsHDR( pFrameInfo->layers.get( 0 ).colorspace ),
 +		pFrameInfo->autoHdrEligible,
 +		g_bHDRItmEnable );

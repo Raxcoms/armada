@@ -25,6 +25,7 @@ require '^\+[[:space:]]*return g_AutoHdrDirectLuts\.HasLuts\(\) && gamescope::Au
 require '^\+[[:space:]]*static void update_auto_hdr_luts\( bool force = false \)$' 'lazy LUT update helper'
 require '^\+[[:space:]]*const bool enabled = !g_sDrmLeaseClientSocket && cv_armada_auto_hdr && g_ColorMgmt\.current\.enabled;$' 'primary-output LUT activation'
 require '^\+[[:space:]]*!g_sDrmLeaseClientSocket,$' 'primary-output eligibility gate'
+require '^\+[[:space:]]*const bool hdrOutputCapable = g_bSupportsHDR_CachedValue \|\| g_bForceHDR10OutputDebug;$' 'HDR capability gate'
 require '^\+[[:space:]]*for \( uint64_t pipeline : autoHdrPipelines \)$' 'plane-aware LUT selection'
 require '^\+[[:space:]]*update_auto_hdr_luts\(\);$' 'live toggle refresh'
 require '^\+[[:space:]]*cv_armada_auto_hdr \);$' 'Auto HDR content-driven output'
@@ -47,6 +48,11 @@ fi
 
 if grep -Eq '^\+.*bNeedsFullComposite.*autoHdr' "$PATCH"; then
     printf 'Auto HDR patch must not force composition\n' >&2
+    exit 1
+fi
+
+if grep -Eq '^\+[[:space:]]*g_bOutputHDREnabled,$' "$PATCH"; then
+    printf 'Auto HDR eligibility must not depend on active HDR output\n' >&2
     exit 1
 fi
 
