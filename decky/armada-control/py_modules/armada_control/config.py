@@ -19,19 +19,13 @@ from .system import (
     swipe_gestures_enabled,
 )
 from .tweaks import (
+    auto_hdr_supported,
     fex_profile_labels,
     load_env_presets,
     load_fex_contract,
     load_tweaks,
     turnip_drivers,
 )
-
-
-def auto_hdr_supported(env):
-    try:
-        return int(env.get("ARMADA_HDR_NITS", "0")) > 0
-    except (TypeError, ValueError):
-        return False
 
 
 def build_config(include_games=True):

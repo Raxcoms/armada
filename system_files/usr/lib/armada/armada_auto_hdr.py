@@ -1,20 +1,15 @@
 import re
 import subprocess
 
+import armada_game_tweaks
+
 
 CONTROL = "armada_auto_hdr"
 
 
-def supported(env):
-    try:
-        return int(env.get("ARMADA_HDR_NITS", "0")) > 0
-    except (TypeError, ValueError):
-        return False
-
-
 class AutoHdrController:
     def __init__(self, env, command):
-        self.supported = supported(env)
+        self.supported = armada_game_tweaks.auto_hdr_supported(env)
         self.command = command
         self.available = None
         self.active = False

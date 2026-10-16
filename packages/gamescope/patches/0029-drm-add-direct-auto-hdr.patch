@@ -231,14 +231,14 @@ index 21dbfc3..a215608 100644
  	}
 -	return true;
 +
-+	return CreateLutBlobs( g_AutoHdrDirectLuts, drm->pending.auto_hdr_shaperlut_id, drm->pending.auto_hdr_lut3d_id );
++	return CreateLutBlobs( g_AutoHdrLuts, drm->pending.auto_hdr_shaperlut_id, drm->pending.auto_hdr_lut3d_id );
  }
  
  bool drm_update_color_mgmt(struct drm_t *drm)
  {
 -	if ( g_ColorMgmt.serial == drm->current.color_mgmt_serial )
 +	if ( g_ColorMgmt.serial == drm->current.color_mgmt_serial &&
-+		g_AutoHdrDirectLutSerial == drm->current.auto_hdr_lut_serial )
++		g_AutoHdrLutSerial == drm->current.auto_hdr_lut_serial )
  		return true;
  
  	if ( drm->bPlaneLuts )
@@ -247,7 +247,7 @@ index 21dbfc3..a215608 100644
  		if ( drm_update_plane_luts( drm ) )
 +		{
  			drm->pending.color_mgmt_serial = g_ColorMgmt.serial;
-+			drm->pending.auto_hdr_lut_serial = g_AutoHdrDirectLutSerial;
++			drm->pending.auto_hdr_lut_serial = g_AutoHdrLutSerial;
 +		}
  		return true;
  	}
@@ -258,13 +258,13 @@ index 21dbfc3..a215608 100644
  		if ( GetBackend()->SupportsOutputLUTs() && drm_update_output_luts( drm ) )
 +		{
  			drm->pending.color_mgmt_serial = g_ColorMgmt.serial;
-+			drm->pending.auto_hdr_lut_serial = g_AutoHdrDirectLutSerial;
++			drm->pending.auto_hdr_lut_serial = g_AutoHdrLutSerial;
 +		}
  		return true;
  	}
  
  	drm->pending.color_mgmt_serial = g_ColorMgmt.serial;
-+	drm->pending.auto_hdr_lut_serial = g_AutoHdrDirectLutSerial;
++	drm->pending.auto_hdr_lut_serial = g_AutoHdrLutSerial;
  
  	for ( uint32_t i = 0; i < EOTF_Count; i++ )
  	{
@@ -529,8 +529,8 @@ index e0fe28d..5b322f6 100644
  
  extern gamescope_color_mgmt_tracker_t g_ColorMgmt;
  extern gamescope_color_mgmt_luts g_ColorMgmtLuts[ EOTF_Count ];
-+extern gamescope_color_mgmt_luts g_AutoHdrDirectLuts;
-+extern uint32_t g_AutoHdrDirectLutSerial;
++extern gamescope_color_mgmt_luts g_AutoHdrLuts;
++extern uint32_t g_AutoHdrLutSerial;
  
  struct VulkanOutput_t
  {
@@ -676,8 +676,8 @@ index 373d697..5997a97 100644
  
  
  gamescope_color_mgmt_luts g_ColorMgmtLuts[ EOTF_Count ];
-+gamescope_color_mgmt_luts g_AutoHdrDirectLuts;
-+uint32_t g_AutoHdrDirectLutSerial = 0;
++gamescope_color_mgmt_luts g_AutoHdrLuts;
++uint32_t g_AutoHdrLutSerial = 0;
  
  gamescope_color_mgmt_luts g_ScreenshotColorMgmtLuts[ EOTF_Count ];
  gamescope_color_mgmt_luts g_ScreenshotColorMgmtLutsHDR[ EOTF_Count ];
@@ -736,22 +736,22 @@ index 373d697..5997a97 100644
 +	return colorimetry_matrix( inputColorimetry, displaycolorimetry_2020 );
 +}
 +
-+static void update_auto_hdr_direct_luts()
++static void rebuild_auto_hdr_luts()
 +{
-+	g_AutoHdrDirectLuts.reset();
++	g_AutoHdrLuts.reset();
 +	if ( !g_ColorMgmtLuts[EOTF_PQ].HasLuts() )
 +	{
-+		g_AutoHdrDirectLutSerial++;
++		g_AutoHdrLutSerial++;
 +		return;
 +	}
 +
 +	for ( uint32_t i = 0; i < s_nLutSize1d; i++ )
 +	{
 +		const uint16_t value = quantize_lut_value_16bit( float( i ) / float( s_nLutSize1d - 1 ) );
-+		g_AutoHdrDirectLuts.lut1d[i * 4] = value;
-+		g_AutoHdrDirectLuts.lut1d[i * 4 + 1] = value;
-+		g_AutoHdrDirectLuts.lut1d[i * 4 + 2] = value;
-+		g_AutoHdrDirectLuts.lut1d[i * 4 + 3] = 0;
++		g_AutoHdrLuts.lut1d[i * 4] = value;
++		g_AutoHdrLuts.lut1d[i * 4 + 1] = value;
++		g_AutoHdrLuts.lut1d[i * 4 + 2] = value;
++		g_AutoHdrLuts.lut1d[i * 4 + 3] = 0;
 +	}
 +
 +	const glm::mat3 autoHdrInputToPq = auto_hdr_sdr_to_pq_colorimetry();
@@ -777,23 +777,23 @@ index 373d697..5997a97 100644
 +				color = sample_color_mgmt_lut3d( g_ColorMgmtLuts[EOTF_PQ], sample_color_mgmt_lut1d( g_ColorMgmtLuts[EOTF_PQ], nits_to_pq( color ) ) );
 +
 +				const uint32_t index = r + g * s_nLutEdgeSize3d + b * s_nLutEdgeSize3d * s_nLutEdgeSize3d;
-+				g_AutoHdrDirectLuts.lut3d[index * 4] = quantize_lut_value_16bit( color.r );
-+				g_AutoHdrDirectLuts.lut3d[index * 4 + 1] = quantize_lut_value_16bit( color.g );
-+				g_AutoHdrDirectLuts.lut3d[index * 4 + 2] = quantize_lut_value_16bit( color.b );
-+				g_AutoHdrDirectLuts.lut3d[index * 4 + 3] = 0;
++				g_AutoHdrLuts.lut3d[index * 4] = quantize_lut_value_16bit( color.r );
++				g_AutoHdrLuts.lut3d[index * 4 + 1] = quantize_lut_value_16bit( color.g );
++				g_AutoHdrLuts.lut3d[index * 4 + 2] = quantize_lut_value_16bit( color.b );
++				g_AutoHdrLuts.lut3d[index * 4 + 3] = 0;
 +			}
 +		}
 +	}
 +
-+	g_AutoHdrDirectLuts.bHasLut1D = true;
-+	g_AutoHdrDirectLuts.bHasLut3D = true;
-+	if ( !g_AutoHdrDirectLuts.vk_lut1d )
-+		g_AutoHdrDirectLuts.vk_lut1d = vulkan_create_1d_lut( s_nLutSize1d );
-+	if ( !g_AutoHdrDirectLuts.vk_lut3d )
-+		g_AutoHdrDirectLuts.vk_lut3d = vulkan_create_3d_lut( s_nLutEdgeSize3d, s_nLutEdgeSize3d, s_nLutEdgeSize3d );
-+	vulkan_update_luts( g_AutoHdrDirectLuts.vk_lut1d, g_AutoHdrDirectLuts.vk_lut3d,
-+		g_AutoHdrDirectLuts.lut1d, g_AutoHdrDirectLuts.lut3d );
-+	g_AutoHdrDirectLutSerial++;
++	g_AutoHdrLuts.bHasLut1D = true;
++	g_AutoHdrLuts.bHasLut3D = true;
++	if ( !g_AutoHdrLuts.vk_lut1d )
++		g_AutoHdrLuts.vk_lut1d = vulkan_create_1d_lut( s_nLutSize1d );
++	if ( !g_AutoHdrLuts.vk_lut3d )
++		g_AutoHdrLuts.vk_lut3d = vulkan_create_3d_lut( s_nLutEdgeSize3d, s_nLutEdgeSize3d, s_nLutEdgeSize3d );
++	vulkan_update_luts( g_AutoHdrLuts.vk_lut1d, g_AutoHdrLuts.vk_lut3d,
++		g_AutoHdrLuts.lut1d, g_AutoHdrLuts.lut3d );
++	g_AutoHdrLutSerial++;
 +}
 +
  gamescope::ConVar<bool> cv_tearing_enabled{ "tearing_enabled", false, "Whether or not tearing is enabled." };
@@ -820,12 +820,12 @@ index 373d697..5997a97 100644
 +	s_bAutoHdrLutsEnabled = enabled;
 +	if ( !enabled )
 +	{
-+		g_AutoHdrDirectLuts.reset();
-+		g_AutoHdrDirectLutSerial++;
++		g_AutoHdrLuts.reset();
++		g_AutoHdrLutSerial++;
 +		return;
 +	}
 +
-+	update_auto_hdr_direct_luts();
++	rebuild_auto_hdr_luts();
 +}
 +
 +static bool steamcompmgr_auto_hdr_enabled( const FrameInfo_t *pFrameInfo )
@@ -834,7 +834,7 @@ index 373d697..5997a97 100644
 +		return false;
 +
 +	const bool hdrOutputCapable = g_bSupportsHDR_CachedValue || g_bForceHDR10OutputDebug;
-+	return g_AutoHdrDirectLuts.HasLuts() && gamescope::AutoHdrIsEligible(
++	return g_AutoHdrLuts.HasLuts() && gamescope::AutoHdrIsEligible(
 +		!g_sDrmLeaseClientSocket,
 +		cv_armada_auto_hdr,
 +		hdrOutputCapable,
@@ -892,8 +892,8 @@ index 373d697..5997a97 100644
 +	if ( bAutoHdrFrame )
 +	{
 +		frameInfo.layers.get( 0 ).autoHdr = true;
-+		frameInfo.autoHdrShaperLut = g_AutoHdrDirectLuts.vk_lut1d;
-+		frameInfo.autoHdrLut3D = g_AutoHdrDirectLuts.vk_lut3d;
++		frameInfo.autoHdrShaperLut = g_AutoHdrLuts.vk_lut1d;
++		frameInfo.autoHdrLut3D = g_AutoHdrLuts.vk_lut3d;
 +	}
 +	const bool bPrimaryFocus = pFocus == GetCurrentFocus();
 +
@@ -930,7 +930,7 @@ index 373d697..5997a97 100644
  	g_steamcompmgr_xdg_wins.clear();
  
  	for ( auto &lut : g_ColorMgmtLuts ) lut.shutdown();
-+	g_AutoHdrDirectLuts.shutdown();
++	g_AutoHdrLuts.shutdown();
  	for ( auto &lut : g_ColorMgmtLutsOverride ) lut.shutdown();
  	for ( auto &lut : g_ScreenshotColorMgmtLuts ) lut.shutdown();
  	for ( auto &lut : g_ScreenshotColorMgmtLutsHDR ) lut.shutdown();

@@ -7,6 +7,13 @@ DEFAULTS_CONFIG = pathlib.Path("/usr/share/armada/game-tweaks.json")
 OVERRIDES_CONFIG = pathlib.Path("/etc/armada/game-tweaks.json")
 
 
+def auto_hdr_supported(env):
+    try:
+        return int(env.get("ARMADA_HDR_NITS", "0")) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def _read_object(path):
     try:
         with path.open(encoding="utf-8") as f:

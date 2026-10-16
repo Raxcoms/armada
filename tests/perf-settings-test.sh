@@ -959,11 +959,11 @@ from armada_control import tweaks as plugin_tweaks
 gt.OVERRIDES_CONFIG = pathlib.Path(WORK) / "missing-plugin-tweaks.json"
 plugin_defaults = plugin_tweaks.load_tweaks()
 check("Auto HDR support requires positive nits",
-      plugin_config.auto_hdr_supported({"ARMADA_HDR_NITS": HDR_CAPABLE_NITS}) and
-      not plugin_config.auto_hdr_supported({"ARMADA_HDR_NITS": "0"}) and
-      not plugin_config.auto_hdr_supported({"ARMADA_HDR_NITS": "-1"}) and
-      not plugin_config.auto_hdr_supported({"ARMADA_HDR_NITS": "invalid"}) and
-      not plugin_config.auto_hdr_supported({"ARMADA_HDR_NITS": None}))
+      plugin_tweaks.auto_hdr_supported({"ARMADA_HDR_NITS": HDR_CAPABLE_NITS}) and
+      not plugin_tweaks.auto_hdr_supported({"ARMADA_HDR_NITS": "0"}) and
+      not plugin_tweaks.auto_hdr_supported({"ARMADA_HDR_NITS": "-1"}) and
+      not plugin_tweaks.auto_hdr_supported({"ARMADA_HDR_NITS": "invalid"}) and
+      not plugin_tweaks.auto_hdr_supported({"ARMADA_HDR_NITS": None}))
 check("plugin loads factory gamescope nice", plugin_defaults["global"]["gamescopeNice"] == -20)
 check("plugin loads factory Vulkan realtime",
       plugin_defaults["global"]["gamescopeVulkanRealtime"] is True)

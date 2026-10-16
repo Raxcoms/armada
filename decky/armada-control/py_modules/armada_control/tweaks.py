@@ -61,6 +61,10 @@ def load_tweaks():
     return armada_game_tweaks.load()
 
 
+def auto_hdr_supported(env):
+    return armada_game_tweaks.auto_hdr_supported(env)
+
+
 def sanitize_tweaks(data):
     if not isinstance(data, dict):
         raise ValueError("tweaks must be an object")
