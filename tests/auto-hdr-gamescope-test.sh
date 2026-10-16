@@ -32,6 +32,8 @@ require '^\+[[:space:]]*frameInfo\.shaperLut\[i\] = g_AutoHdrDirectLuts\.vk_lut1
 require '^\+[[:space:]]*frameInfo\.lut3D\[i\] = g_AutoHdrDirectLuts\.vk_lut3d;$' 'shared 3D LUT binding'
 require '^\+[[:space:]]*bool autoHdrLut = c_auto_hdr_lut_enable && colorspaceLayerIdx == 0;$' 'compositor shared LUT path'
 require '^\+[[:space:]]*g_bAutoHdrFramePresented = pConnector && bAutoHdrFrame;$' 'HDR reporting after presentation'
+require '^\+[[:space:]]*const glm::vec3 linearInput\{$' 'linear-light LUT input'
+require '^\+[[:space:]]*k_2020_from_709 \* linearInput,$' 'linear-light primary conversion'
 
 if grep -Eq '^[+-].*(autoHdrItm|auto_hdr_itm|VKR_AUTO_HDR_ITM)' "$PATCH"; then
     printf 'Auto HDR patch has stale ITM-only names\n' >&2

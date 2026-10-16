@@ -650,7 +650,7 @@ index 373d697..5997a97 100644
  			lut3d_t * pLook = pSharedLook && pSharedLook->lutEdgeSize > 0 ? pSharedLook.get() : nullptr;
  
  			if ( inputEOTF == EOTF_Gamma22 )
-@@ -487,6 +490,92 @@ create_color_mgmt_luts(
+@@ -487,6 +490,97 @@ create_color_mgmt_luts(
  	}
  }
  
@@ -715,8 +715,13 @@ index 373d697..5997a97 100644
 +					float( g ) / float( s_nLutEdgeSize3d - 1 ),
 +					float( b ) / float( s_nLutEdgeSize3d - 1 ),
 +				};
++				const glm::vec3 linearInput{
++					srgb_to_linear( input.r ),
++					srgb_to_linear( input.g ),
++					srgb_to_linear( input.b ),
++				};
 +				glm::vec3 color = gamescope::AutoHdrInverseToneMap(
-+					k_2020_from_709 * input,
++					k_2020_from_709 * linearInput,
 +					g_flHDRItmSdrNits, g_flHDRItmTargetNits );
 +				color = sample_color_mgmt_lut3d( g_ColorMgmtLuts[EOTF_PQ], sample_color_mgmt_lut1d( g_ColorMgmtLuts[EOTF_PQ], nits_to_pq( color ) ) );
 +
