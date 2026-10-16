@@ -4,17 +4,19 @@ Date: Thu, 15 Oct 2026 15:53:00 -0300
 Subject: [PATCH] gamescope: add Auto HDR presentation
 
 ---
- src/Backends/DRMBackend.cpp            |  84 ++++++++++++--
- src/auto_hdr.h                         |  75 +++++++++++++
- src/rendervulkan.cpp                   |  29 +++--
- src/rendervulkan.hpp                   |  13 ++-
+ src/Backends/DRMBackend.cpp            | 115 ++++++++++++++++++---
+ src/color_helpers.cpp                  |   7 ++
+ src/color_helpers.h                    |   2 +
+ src/auto_hdr.h                         |  76 ++++++++++++++
+ src/rendervulkan.cpp                   |  30 ++++--
+ src/rendervulkan.hpp                   |  15 +++-
  src/shaders/composite.h                |  19 +++
  src/shaders/descriptor_set.h           |   1 +
- src/shaders/descriptor_set_constants.h |   2 +
- src/steamcompmgr.cpp                   | 161 ++++++++++++++++++++++---
+ src/shaders/descriptor_set_constants.h |   4 +-
+ src/steamcompmgr.cpp                   | 178 +++++++++++++++++++++++++++++++-
  tests/meson.build                      |   3 +-
- tests/test_auto_hdr.cpp                |  45 +++++++++
- 10 files changed, 392 insertions(+), 40 deletions(-)
+ tests/test_auto_hdr.cpp                |  46 ++++++++
+ 12 files changed, 454 insertions(+), 42 deletions(-)
  create mode 100644 src/auto_hdr.h
  create mode 100644 tests/test_auto_hdr.cpp
 
@@ -266,6 +268,37 @@ index 21dbfc3..a215608 100644
  
  	for ( uint32_t i = 0; i < EOTF_Count; i++ )
  	{
+diff --git a/src/color_helpers.cpp b/src/color_helpers.cpp
+index 1015738..d94d7f0 100644
+--- a/src/color_helpers.cpp
++++ b/src/color_helpers.cpp
+@@ -75,6 +75,13 @@ glm::mat3 normalised_primary_matrix( const primaries_t & rgbPrimaries, const glm
+     return matPrimaries * whiteScale;
+ }
+ 
++glm::mat3 colorimetry_matrix( const displaycolorimetry_t & source, const displaycolorimetry_t & dest )
++{
++    const glm::mat3 xyzFromSource = normalised_primary_matrix( source.primaries, source.white, 1.0f );
++    const glm::mat3 destFromXyz = glm::inverse( normalised_primary_matrix( dest.primaries, dest.white, 1.0f ) );
++    return destFromXyz * xyzFromSource;
++}
++
+ glm::mat3 chromatic_adaptation_matrix( const glm::vec3 & sourceWhiteXYZ, const glm::vec3 & destWhiteXYZ,
+     EChromaticAdaptationMethod eMethod )
+ {
+diff --git a/src/color_helpers.h b/src/color_helpers.h
+index a7ab9bf..d42bc57 100644
+--- a/src/color_helpers.h
++++ b/src/color_helpers.h
+@@ -248,6 +248,8 @@ struct displaycolorimetry_t
+ 	glm::vec2 white;
+ };
+ 
++glm::mat3 colorimetry_matrix( const displaycolorimetry_t & source, const displaycolorimetry_t & dest );
++
+ struct nightmode_t
+ {
+ 	bool operator == (const nightmode_t&) const = default;
 diff --git a/src/auto_hdr.h b/src/auto_hdr.h
 new file mode 100644
 index 0000000..ee04e42
@@ -657,7 +690,7 @@ index 373d697..5997a97 100644
  			lut3d_t * pLook = pSharedLook && pSharedLook->lutEdgeSize > 0 ? pSharedLook.get() : nullptr;
  
  			if ( inputEOTF == EOTF_Gamma22 )
-@@ -487,6 +490,97 @@ create_color_mgmt_luts(
+@@ -487,6 +490,108 @@ create_color_mgmt_luts(
  	}
  }
  
@@ -693,6 +726,16 @@ index 373d697..5997a97 100644
 +	return glm::mix( glm::mix( c00, c10, fraction.g ), glm::mix( c01, c11, fraction.g ), fraction.b );
 +}
 +
++static glm::mat3 auto_hdr_sdr_to_pq_colorimetry()
++{
++	displaycolorimetry_t inputColorimetry{};
++	colormapping_t colorMapping{};
++	buildSDRColorimetry( &inputColorimetry, &colorMapping,
++		g_ColorMgmt.current.sdrGamutWideness,
++		g_ColorMgmt.current.displayColorimetry );
++	return colorimetry_matrix( inputColorimetry, displaycolorimetry_2020 );
++}
++
 +static void update_auto_hdr_direct_luts()
 +{
 +	g_AutoHdrDirectLuts.reset();
@@ -711,6 +754,7 @@ index 373d697..5997a97 100644
 +		g_AutoHdrDirectLuts.lut1d[i * 4 + 3] = 0;
 +	}
 +
++	const glm::mat3 autoHdrInputToPq = auto_hdr_sdr_to_pq_colorimetry();
 +	for ( uint32_t b = 0; b < s_nLutEdgeSize3d; b++ )
 +	{
 +		for ( uint32_t g = 0; g < s_nLutEdgeSize3d; g++ )
@@ -728,7 +772,7 @@ index 373d697..5997a97 100644
 +					srgb_to_linear( input.b ),
 +				};
 +				glm::vec3 color = gamescope::AutoHdrInverseToneMap(
-+					k_2020_from_709 * linearInput,
++					autoHdrInputToPq * linearInput,
 +					g_flHDRItmSdrNits, g_flHDRItmTargetNits );
 +				color = sample_color_mgmt_lut3d( g_ColorMgmtLuts[EOTF_PQ], sample_color_mgmt_lut1d( g_ColorMgmtLuts[EOTF_PQ], nits_to_pq( color ) ) );
 +

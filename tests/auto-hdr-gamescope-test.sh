@@ -35,7 +35,11 @@ require '^\+[[:space:]]*frameInfo\.autoHdrLut3D = g_AutoHdrDirectLuts\.vk_lut3d;
 require '^\+[[:space:]]*bool autoHdrLut = c_auto_hdr_lut_enable && colorspaceLayerIdx == 0;$' 'base-layer Auto HDR LUT path'
 require '^\+[[:space:]]*g_bAutoHdrFramePresented = pConnector && bAutoHdrFrame;$' 'HDR reporting after presentation'
 require '^\+[[:space:]]*const glm::vec3 linearInput\{$' 'linear-light LUT input'
-require '^\+[[:space:]]*k_2020_from_709 \* linearInput,$' 'linear-light primary conversion'
+require '^\+[[:space:]]*static glm::mat3 auto_hdr_sdr_to_pq_colorimetry\(\)$' 'SDR gamut policy helper'
+require '^\+[[:space:]]*buildSDRColorimetry\( &inputColorimetry, &colorMapping,$' 'existing SDR gamut policy'
+require '^\+[[:space:]]*g_ColorMgmt\.current\.sdrGamutWideness,$' 'active SDR gamut setting'
+require '^\+[[:space:]]*return colorimetry_matrix\( inputColorimetry, displaycolorimetry_2020 \);$' 'PQ input colour conversion'
+require '^\+[[:space:]]*autoHdrInputToPq \* linearInput,$' 'policy-aware primary conversion'
 
 if grep -Eq '^[+-].*(autoHdrItm|auto_hdr_itm|VKR_AUTO_HDR_ITM)' "$PATCH"; then
     printf 'Auto HDR patch has stale ITM-only names\n' >&2
