@@ -27,6 +27,13 @@ from .tweaks import (
 )
 
 
+def auto_hdr_supported(env):
+    try:
+        return int(env.get("ARMADA_HDR_NITS", "0")) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def build_config(include_games=True):
     fex_contract = load_fex_contract()
     env = device_env()
@@ -43,6 +50,7 @@ def build_config(include_games=True):
         "perf": perf_info(),
         "cpuDeviceClass": env.get("ARMADA_SOC_CLASS", ""),
         "rgbSupported": rgb_supported(),
+        "autoHdrSupported": auto_hdr_supported(env),
         "protonDefaults": [
             default.strip()
             for default in env.get("ARMADA_PROTON_DEFAULTS", "").split(":")
