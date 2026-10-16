@@ -41,6 +41,8 @@ require '^\+[[:space:]]*g_bAutoHdrFramePresented = pConnector && bAutoHdrFrame;$
 require '^\+[[:space:]]*const glm::vec3 linearInput\{$' 'linear-light LUT input'
 require '^\+[[:space:]]*const glm::mat3 &autoHdrInputToPq = k_2020_from_709;$' 'existing Rec.709-to-Rec.2020 conversion'
 require '^\+[[:space:]]*autoHdrInputToPq \* linearInput,$' 'Rec.709 primary conversion'
+require '^\+[[:space:]]*const float targetNits = g_ColorMgmt\.current\.flInternalDisplayBrightness;$' 'active display peak target'
+require '^\+[[:space:]]*g_flHDRItmSdrNits, targetNits \);$' 'peak-aware inverse tone mapping'
 
 if grep -Eq '^[+-].*(autoHdrItm|auto_hdr_itm|VKR_AUTO_HDR_ITM)' "$PATCH"; then
     printf 'Auto HDR patch has stale ITM-only names\n' >&2
