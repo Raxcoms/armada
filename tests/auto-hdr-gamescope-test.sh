@@ -20,10 +20,12 @@ require() {
 }
 
 require '^\+[[:space:]]*constexpr bool AutoHdrUsesDirectScanout\(' 'direct scanout eligibility gate'
-require '^\+[[:space:]]*const bool useAutoHdrLuts = gamescope::AutoHdrUsesDirectScanout\(' 'direct plane LUT selection'
+require '^\+[[:space:]]*const bool useAutoHdrLuts = drm_layer_uses_auto_hdr_luts\( drm, \*pLayer \);$' 'direct plane LUT selection'
 require '^\+[[:space:]]*return g_AutoHdrDirectLuts\.HasLuts\(\) && gamescope::AutoHdrIsEligible\(' 'LUT readiness gate'
 require '^\+[[:space:]]*static void update_auto_hdr_luts\( bool force = false \)$' 'lazy LUT update helper'
-require '^\+[[:space:]]*const bool enabled = cv_armada_auto_hdr && g_ColorMgmt\.current\.enabled;$' 'toggle-aware LUT activation'
+require '^\+[[:space:]]*const bool enabled = !g_sDrmLeaseClientSocket && cv_armada_auto_hdr && g_ColorMgmt\.current\.enabled;$' 'primary-output LUT activation'
+require '^\+[[:space:]]*!g_sDrmLeaseClientSocket,$' 'primary-output eligibility gate'
+require '^\+[[:space:]]*for \( uint64_t pipeline : autoHdrPipelines \)$' 'plane-aware LUT selection'
 require '^\+[[:space:]]*update_auto_hdr_luts\(\);$' 'live toggle refresh'
 require '^\+[[:space:]]*cv_armada_auto_hdr \);$' 'Auto HDR content-driven output'
 require '^\+[[:space:]]*frameInfo\.shaperLut\[i\] = g_AutoHdrDirectLuts\.vk_lut1d;$' 'shared shaper LUT binding'
@@ -43,6 +45,11 @@ fi
 
 if grep -Eq '^\+.*bNeedsFullComposite.*autoHdr' "$PATCH"; then
     printf 'Auto HDR patch must not force composition\n' >&2
+    exit 1
+fi
+
+if grep -Eq '^\+.*std::find_if\( drm->planes\.begin\(\), drm->planes\.end\(\)' "$PATCH"; then
+    printf 'Auto HDR patch must not select an arbitrary plane LUT pipeline\n' >&2
     exit 1
 fi
 

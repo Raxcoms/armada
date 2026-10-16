@@ -63,19 +63,30 @@ index 21dbfc3..a215608 100644
  		}
  
  		return hash;
-@@ -2887,15 +2893,25 @@ static int drm_set_plane_luts( struct drm_t *drm, const FrameInfo_t *frameInfo )
+@@ -2866,5 +2866,15 @@ static inline uint32_t ColorSpaceToEOTFIndex( GamescopeAppTextureColorspace colo
+ }
+ 
++static bool drm_layer_uses_auto_hdr_luts( const drm_t *drm, const FrameInfo_t::Layer_t &layer )
++{
++	return gamescope::AutoHdrUsesDirectScanout(
++		layer.autoHdr,
++		drm->bPlaneLuts,
++		layer.applyColorMgmt,
++		layer.colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_SRGB ||
++			layer.colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_LINEAR );
++}
++
+ 
+ // liftoff cannot place per-plane colorop properties, so after it picks the planes each
+ // one gets the tables of its layer's EOTF and the finished request is tested once more.
+@@ -2887,15 +2898,20 @@ static int drm_set_plane_luts( struct drm_t *drm, const FrameInfo_t *frameInfo )
  			continue;
  
  		// Not a layout failure, so kept out of the liftoff state cache.
 -		uint32_t uEOTF = ColorSpaceToEOTFIndex( pLayer->colorspace );
 -		if ( !drm->pending.shaperlut_id[ uEOTF ] || !drm->pending.lut3d_id[ uEOTF ] )
 +		const uint32_t uEOTF = ColorSpaceToEOTFIndex( pLayer->colorspace );
-+		const bool useAutoHdrLuts = gamescope::AutoHdrUsesDirectScanout(
-+			pLayer->autoHdr,
-+			drm->bPlaneLuts,
-+			pLayer->applyColorMgmt,
-+			pLayer->colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_SRGB ||
-+				pLayer->colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_LINEAR );
++		const bool useAutoHdrLuts = drm_layer_uses_auto_hdr_luts( drm, *pLayer );
 +		const std::shared_ptr<gamescope::BackendBlob> &shaperLut = useAutoHdrLuts
 +			? drm->pending.auto_hdr_shaperlut_id : drm->pending.shaperlut_id[ uEOTF ];
 +		const std::shared_ptr<gamescope::BackendBlob> &lut3D = useAutoHdrLuts
@@ -101,29 +112,12 @@ index 21dbfc3..a215608 100644
  	}
  
  	return entry;
-@@ -3908,6 +3925,28 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
+@@ -3908,6 +3923,11 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
  				else
  					liftoff_layer_set_property( drm->lo_layers[ i ], "AMD_PLANE_CTM", 0 );
  			}
 +
-+			const bool useAutoHdrLuts = gamescope::AutoHdrUsesDirectScanout(
-+				pLayer->autoHdr,
-+				drm->bPlaneLuts,
-+				pLayer->applyColorMgmt,
-+				pLayer->colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_SRGB ||
-+					pLayer->colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_LINEAR );
-+			if ( useAutoHdrLuts )
-+			{
-+				auto pPlane = std::find_if( drm->planes.begin(), drm->planes.end(),
-+					[]( const std::unique_ptr<gamescope::CDRMPlane> &pPlane )
-+					{
-+						return pPlane->GetLutPipeline() != 0;
-+					} );
-+				if ( pPlane == drm->planes.end() )
-+					return -EINVAL;
-+				liftoff_layer_set_property( drm->lo_layers[ i ], "COLOR_PIPELINE", ( *pPlane )->GetLutPipeline() );
-+			}
-+			else
++			if ( !drm_layer_uses_auto_hdr_luts( drm, *pLayer ) )
 +			{
 +				liftoff_layer_unset_property( drm->lo_layers[ i ], "COLOR_PIPELINE" );
 +			}
@@ -138,7 +132,64 @@ index 21dbfc3..a215608 100644
  
  			if ( drm_supports_color_mgmt( drm ) )
  			{
-@@ -4508,14 +4548,14 @@ static bool drm_update_plane_luts(struct drm_t *drm)
+@@ -3930,6 +3947,20 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
+ 		}
+ 	}
+ 
++	std::vector<uint64_t> autoHdrPipelines;
++	for ( int i = 0; i < frameInfo->layers.count(); i++ )
++	{
++		if ( !drm_layer_uses_auto_hdr_luts( drm, frameInfo->layers.get( i ) ) )
++			continue;
++
++		for ( const std::unique_ptr<gamescope::CDRMPlane> &pPlane : drm->planes )
++		{
++			const uint64_t pipeline = pPlane->GetLutPipeline();
++			if ( pipeline && std::find( autoHdrPipelines.begin(), autoHdrPipelines.end(), pipeline ) == autoHdrPipelines.end() )
++				autoHdrPipelines.push_back( pipeline );
++		}
++	}
++
+ 	// liftoff's allocation tests must not inherit last frame's pipelines; a pipeline
+ 	// set again below wins, as the last value of a property in a request does.
+ 	for ( std::unique_ptr< gamescope::CDRMPlane > &pPlane : drm->planes )
+@@ -3941,7 +3974,34 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
+ 	struct liftoff_output_apply_options lo_options = {
+ 		.timeout_ns = std::numeric_limits<int64_t>::max()
+ 	};
+ 
+-	int ret = liftoff_output_apply( drm->lo_output, drm->req, drm->flags, &lo_options);
++	int ret = 0;
++	if ( autoHdrPipelines.empty() )
++	{
++		ret = liftoff_output_apply( drm->lo_output, drm->req, drm->flags, &lo_options );
++	}
++	else
++	{
++		ret = -EINVAL;
++		for ( uint64_t pipeline : autoHdrPipelines )
++		{
++			for ( int i = 0; i < frameInfo->layers.count(); i++ )
++			{
++				if ( drm_layer_uses_auto_hdr_luts( drm, frameInfo->layers.get( i ) ) )
++					liftoff_layer_set_property( drm->lo_layers[ i ], "COLOR_PIPELINE", pipeline );
++			}
++
++			ret = liftoff_output_apply( drm->lo_output, drm->req, drm->flags, &lo_options );
++			if ( ret == 0 )
++			{
++				if ( !liftoff_output_needs_composition( drm->lo_output ) )
++					break;
++				ret = -EINVAL;
++			}
++
++			if ( ret != -EINVAL )
++				break;
++		}
++	}
+ 
+ 	// The NVIDIA 555 series drivers started advertising DRM_CAP_SYNCOBJ, but do
+@@ -4508,14 +4560,14 @@ static bool drm_update_plane_luts(struct drm_t *drm)
  	static constexpr uint32_t k_nIgcSize = 257;
  	static constexpr uint32_t k_nLut3DSize = s_nLutEdgeSize3d * s_nLutEdgeSize3d * s_nLutEdgeSize3d;
  	auto ToLut32 = []( uint16_t val ) { return uint32_t( val ) * 0x10001u; };
@@ -220,7 +271,7 @@ new file mode 100644
 index 0000000..ee04e42
 --- /dev/null
 +++ b/src/auto_hdr.h
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,76 @@
 +#pragma once
 +
 +#include <algorithm>
@@ -231,13 +282,14 @@ index 0000000..ee04e42
 +namespace gamescope
 +{
 +	constexpr bool AutoHdrIsEligible(
++		bool primaryOutput,
 +		bool autoHdrEnabled,
 +		bool hdrOutputEnabled,
 +		bool baseLayerIsHdr,
 +		bool baseLayerIsEligible,
 +		bool legacyItmEnabled )
 +	{
-+		return autoHdrEnabled && hdrOutputEnabled && !baseLayerIsHdr &&
++		return primaryOutput && autoHdrEnabled && hdrOutputEnabled && !baseLayerIsHdr &&
 +			baseLayerIsEligible && !legacyItmEnabled;
 +	}
 +
@@ -691,7 +743,7 @@ index 373d697..5997a97 100644
  gamescope::ConVar<bool> cv_tearing_enabled{ "tearing_enabled", false, "Whether or not tearing is enabled." };
  int g_nSteamMaxHeight = 0;
  bool g_bVRRCapable_CachedValue = false;
-@@ -494,10 +573,44 @@ bool g_bVRRInUse_CachedValue = false;
+@@ -494,10 +573,45 @@ bool g_bVRRInUse_CachedValue = false;
  bool g_bSupportsHDR_CachedValue = false;
  bool g_bForceHDR10OutputDebug = false;
  gamescope::ConVar<bool> cv_hdr_enabled{ "hdr_enabled", false, "Whether or not HDR is enabled if it is available." };
@@ -705,7 +757,7 @@ index 373d697..5997a97 100644
 +
 +static void update_auto_hdr_luts( bool force = false )
 +{
-+	const bool enabled = cv_armada_auto_hdr && g_ColorMgmt.current.enabled;
++	const bool enabled = !g_sDrmLeaseClientSocket && cv_armada_auto_hdr && g_ColorMgmt.current.enabled;
 +	if ( !force && enabled == s_bAutoHdrLutsEnabled )
 +		return;
 +
@@ -726,6 +778,7 @@ index 373d697..5997a97 100644
 +		return false;
 +
 +	return g_AutoHdrDirectLuts.HasLuts() && gamescope::AutoHdrIsEligible(
++		!g_sDrmLeaseClientSocket,
 +		cv_armada_auto_hdr,
 +		g_bOutputHDREnabled,
 +		ColorspaceIsHDR( pFrameInfo->layers.get( 0 ).colorspace ),
@@ -878,7 +931,7 @@ new file mode 100644
 index 0000000..86f47f3
 --- /dev/null
 +++ b/tests/test_auto_hdr.cpp
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,46 @@
 +#include <catch2/catch_approx.hpp>
 +#include <catch2/catch_test_macros.hpp>
 +
@@ -888,16 +941,17 @@ index 0000000..86f47f3
 +
 +TEST_CASE( "Auto HDR is opt-in", "[auto_hdr]" )
 +{
-+	REQUIRE_FALSE( AutoHdrIsEligible( false, true, false, true, false ) );
++	REQUIRE_FALSE( AutoHdrIsEligible( true, false, true, false, true, false ) );
 +}
 +
 +TEST_CASE( "Auto HDR requires an eligible SDR game layer", "[auto_hdr]" )
 +{
-+	REQUIRE_FALSE( AutoHdrIsEligible( true, false, false, true, false ) );
-+	REQUIRE_FALSE( AutoHdrIsEligible( true, true, false, false, false ) );
-+	REQUIRE( AutoHdrIsEligible( true, true, false, true, false ) );
-+	REQUIRE_FALSE( AutoHdrIsEligible( true, true, true, true, false ) );
-+	REQUIRE_FALSE( AutoHdrIsEligible( true, true, false, true, true ) );
++	REQUIRE_FALSE( AutoHdrIsEligible( false, true, true, false, true, false ) );
++	REQUIRE_FALSE( AutoHdrIsEligible( true, true, false, false, true, false ) );
++	REQUIRE_FALSE( AutoHdrIsEligible( true, true, true, false, false, false ) );
++	REQUIRE( AutoHdrIsEligible( true, true, true, false, true, false ) );
++	REQUIRE_FALSE( AutoHdrIsEligible( true, true, true, true, true, false ) );
++	REQUIRE_FALSE( AutoHdrIsEligible( true, true, true, false, true, true ) );
 +}
 +
 +TEST_CASE( "Auto HDR direct scanout needs a compatible plane pipeline", "[auto_hdr]" )
