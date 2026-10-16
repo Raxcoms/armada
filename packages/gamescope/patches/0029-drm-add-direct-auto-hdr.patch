@@ -40,7 +40,7 @@ index 21dbfc3..a215608 100644
  		// msm output LUTs, rebuilt with color_mgmt_serial
  		std::shared_ptr<gamescope::BackendBlob> output_degamma;
  		std::shared_ptr<gamescope::BackendBlob> output_lut3d;
-@@ -152,6 +154,8 @@ struct drm_t {
+@@ -152,6 +154,9 @@ struct drm_t {
  		// AMD plane property blobs, or colorop DATA blobs when bPlaneLuts
  		std::shared_ptr<gamescope::BackendBlob> lut3d_id[ EOTF_Count ];
  		std::shared_ptr<gamescope::BackendBlob> shaperlut_id[ EOTF_Count ];
@@ -48,8 +48,9 @@ index 21dbfc3..a215608 100644
 +		std::shared_ptr<gamescope::BackendBlob> auto_hdr_shaperlut_id;
  		amdgpu_transfer_function output_tf = AMDGPU_TRANSFER_FUNCTION_DEFAULT;
  	} current, pending;
++	uint64_t auto_hdr_lut_pipeline = 0;
  
-@@ -2738,6 +2742,7 @@ struct LiftoffStateCacheEntry
+@@ -2738,6 +2743,7 @@ struct LiftoffStateCacheEntry
  		GamescopeAppTextureColorspace colorspace;
  		AlphaBlendingMode_t eAlphaBlendingMode;
  		bool applyColorMgmt;
@@ -57,7 +58,7 @@ index 21dbfc3..a215608 100644
  	} layerState[ k_nMaxLayers ];
  
  	bool operator == (const LiftoffStateCacheEntry& entry) const
-@@ -2767,6 +2772,7 @@ struct LiftoffStateCacheEntryKasher
+@@ -2767,6 +2773,7 @@ struct LiftoffStateCacheEntryKasher
  			hash_combine(hash, k.layerState[i].colorRange);
  			hash_combine(hash, k.layerState[i].colorspace);
  			hash_combine(hash, k.layerState[i].eAlphaBlendingMode);
@@ -65,7 +66,7 @@ index 21dbfc3..a215608 100644
  		}
  
  		return hash;
-@@ -2866,5 +2866,15 @@ static inline uint32_t ColorSpaceToEOTFIndex( GamescopeAppTextureColorspace colo
+@@ -2866,5 +2867,15 @@ static inline uint32_t ColorSpaceToEOTFIndex( GamescopeAppTextureColorspace colo
  }
  
 +static bool drm_layer_uses_auto_hdr_luts( const drm_t *drm, const FrameInfo_t::Layer_t &layer )
@@ -81,7 +82,7 @@ index 21dbfc3..a215608 100644
  
  // liftoff cannot place per-plane colorop properties, so after it picks the planes each
  // one gets the tables of its layer's EOTF and the finished request is tested once more.
-@@ -2887,15 +2898,20 @@ static int drm_set_plane_luts( struct drm_t *drm, const FrameInfo_t *frameInfo )
+@@ -2887,15 +2899,20 @@ static int drm_set_plane_luts( struct drm_t *drm, const FrameInfo_t *frameInfo )
  			continue;
  
  		// Not a layout failure, so kept out of the liftoff state cache.
@@ -106,7 +107,7 @@ index 21dbfc3..a215608 100644
  		props.LUT3D_BYPASS->SetPendingValue( drm->req, 0, false );
  	}
  
-@@ -2951,6 +2967,7 @@ LiftoffStateCacheEntry FrameInfoToLiftoffStateCacheEntry( struct drm_t *drm, con
+@@ -2951,6 +2968,7 @@ LiftoffStateCacheEntry FrameInfoToLiftoffStateCacheEntry( struct drm_t *drm, con
  		}
  		entry.layerState[i].eAlphaBlendingMode = frameInfo->layers.get( i ).eAlphaBlendingMode;
  		entry.layerState[i].applyColorMgmt = frameInfo->layers.get( i ).applyColorMgmt;
@@ -114,7 +115,7 @@ index 21dbfc3..a215608 100644
  	}
  
  	return entry;
-@@ -3908,6 +3923,11 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
+@@ -3908,6 +3924,11 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
  				else
  					liftoff_layer_set_property( drm->lo_layers[ i ], "AMD_PLANE_CTM", 0 );
  			}
@@ -126,7 +127,7 @@ index 21dbfc3..a215608 100644
  		}
  		else
  		{
-@@ -3917,6 +3956,7 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
+@@ -3917,6 +3957,7 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
  			liftoff_layer_unset_property( drm->lo_layers[ i ], "COLOR_ENCODING" );
  			liftoff_layer_unset_property( drm->lo_layers[ i ], "COLOR_RANGE" );
  			liftoff_layer_unset_property( drm->lo_layers[ i ], "pixel blend mode" );
@@ -134,11 +135,14 @@ index 21dbfc3..a215608 100644
  
  			if ( drm_supports_color_mgmt( drm ) )
  			{
-@@ -3930,6 +3947,20 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
+@@ -3930,6 +3948,23 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
  		}
  	}
  
 +	std::vector<uint64_t> autoHdrPipelines;
++	if ( drm->auto_hdr_lut_pipeline )
++		autoHdrPipelines.push_back( drm->auto_hdr_lut_pipeline );
++
 +	for ( int i = 0; i < frameInfo->layers.count(); i++ )
 +	{
 +		if ( !drm_layer_uses_auto_hdr_luts( drm, frameInfo->layers.get( i ) ) )
@@ -155,7 +159,7 @@ index 21dbfc3..a215608 100644
  	// liftoff's allocation tests must not inherit last frame's pipelines; a pipeline
  	// set again below wins, as the last value of a property in a request does.
  	for ( std::unique_ptr< gamescope::CDRMPlane > &pPlane : drm->planes )
-@@ -3941,7 +3974,34 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
+@@ -3941,7 +3978,40 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
  	struct liftoff_output_apply_options lo_options = {
  		.timeout_ns = std::numeric_limits<int64_t>::max()
  	};
@@ -181,9 +185,15 @@ index 21dbfc3..a215608 100644
 +			if ( ret == 0 )
 +			{
 +				if ( !liftoff_output_needs_composition( drm->lo_output ) )
++				{
++					drm->auto_hdr_lut_pipeline = pipeline;
 +					break;
++				}
 +				ret = -EINVAL;
 +			}
++
++			if ( pipeline == drm->auto_hdr_lut_pipeline )
++				drm->auto_hdr_lut_pipeline = 0;
 +
 +			if ( ret != -EINVAL )
 +				break;
@@ -191,7 +201,7 @@ index 21dbfc3..a215608 100644
 +	}
  
  	// The NVIDIA 555 series drivers started advertising DRM_CAP_SYNCOBJ, but do
-@@ -4508,14 +4560,14 @@ static bool drm_update_plane_luts(struct drm_t *drm)
+@@ -4508,14 +4570,14 @@ static bool drm_update_plane_luts(struct drm_t *drm)
  	static constexpr uint32_t k_nIgcSize = 257;
  	static constexpr uint32_t k_nLut3DSize = s_nLutEdgeSize3d * s_nLutEdgeSize3d * s_nLutEdgeSize3d;
  	auto ToLut32 = []( uint16_t val ) { return uint32_t( val ) * 0x10001u; };
@@ -212,7 +222,7 @@ index 21dbfc3..a215608 100644
  
  		std::array<drm_color_lut32, k_nIgcSize> igc{};
  		for ( uint32_t i = 0; i < k_nIgcSize; i++ )
-@@ -4537,24 +4577,34 @@ static bool drm_update_plane_luts(struct drm_t *drm)
+@@ -4537,24 +4587,34 @@ static bool drm_update_plane_luts(struct drm_t *drm)
  		for ( uint32_t n = 0; n < k_nLut3DSize; n++ )
  			( *pLut3D )[n] = { ToLut32( luts.lut3d[n * 4] ), ToLut32( luts.lut3d[n * 4 + 1] ), ToLut32( luts.lut3d[n * 4 + 2] ), 0 };
  
@@ -252,7 +262,7 @@ index 21dbfc3..a215608 100644
  		return true;
  	}
  
-@@ -4562,11 +4612,15 @@ bool drm_update_color_mgmt(struct drm_t *drm)
+@@ -4562,11 +4622,15 @@ bool drm_update_color_mgmt(struct drm_t *drm)
  	{
  		// A failed blob keeps the old serial so the next frame retries.
  		if ( GetBackend()->SupportsOutputLUTs() && drm_update_output_luts( drm ) )
