@@ -423,10 +423,11 @@ index 042b79f..7164851 100644
  		m_pipelineMap[key] = result;
  		return result;
  	}
-@@ -4394,6 +4401,8 @@ std::optional<uint64_t> vulkan_composite( struct FrameInfo_t *frameInfo, gamesco
+@@ -4394,6 +4401,9 @@ std::optional<uint64_t> vulkan_composite( struct FrameInfo_t *frameInfo, gamesco
  	for (uint32_t i = 0; i < EOTF_Count; i++)
  		cmdBuffer->bindColorMgmtLuts(i, frameInfo->shaperLut[i], frameInfo->lut3D[i]);
  
++	cmdBuffer->bindColorMgmtLuts(EOTF_Count, frameInfo->autoHdrShaperLut, frameInfo->autoHdrLut3D);
 +	const bool autoHdrLutEnabled = frameInfo->layers.count() && frameInfo->layers.get( 0 ).autoHdr;
 +
  	if ( frameInfo->useFSRLayer0 || frameInfo->useSGSRLayer0 )
@@ -480,6 +481,9 @@ index e0fe28d..5b322f6 100644
  	BlurMode blurLayer0;
  	int blurRadius;
  
+@@ -299,0 +300,2 @@ struct FrameInfo_t
++	gamescope::Rc<CVulkanTexture> autoHdrShaperLut;
++	gamescope::Rc<CVulkanTexture> autoHdrLut3D;
 @@ -322,6 +323,7 @@ struct FrameInfo_t
  		GamescopeUpscaleFilter filter = GamescopeUpscaleFilter::LINEAR;
  
@@ -558,8 +562,8 @@ index a62324e..e6c7062 100644
 +    if (autoHdrLut)
 +    {
 +		color = colorspace_plane_shaper_tf(color, colorspace);
-+		color = perform_1dlut(color, s_shaperLut[EOTF_Gamma22]);
-+		color = perform_3dlut(color, s_lut3D[EOTF_Gamma22]);
++		color = perform_1dlut(color, s_shaperLut[EOTF_Count]);
++		color = perform_3dlut(color, s_lut3D[EOTF_Count]);
 +		return colorspace_blend_tf(color, c_output_eotf);
 +	}
 +
@@ -620,6 +624,9 @@ index e81b006..dda4c84 100644
  #define VKR_BLUR_EXTRA_SLOT       VKR_MAX_LAYERS
  #define VKR_NIS_COEF_SCALER_SLOT (VKR_BLUR_EXTRA_SLOT + 1u)
  #define VKR_NIS_COEF_USM_SLOT    (VKR_NIS_COEF_SCALER_SLOT + 1u)
+@@ -12 +12 @@
+-#define VKR_LUT3D_COUNT 2 // Must match EOTF_Count
++#define VKR_LUT3D_COUNT 3 // Gamma22, PQ, AutoHDR
 diff --git a/src/steamcompmgr.cpp b/src/steamcompmgr.cpp
 index 373d697..5997a97 100644
 --- a/src/steamcompmgr.cpp
@@ -822,21 +829,16 @@ index 373d697..5997a97 100644
  	// The output applies the gamma 2.2 shaper + 3D LUT post-blend, so the shader
  	// leaves them unbound and a composited frame is not corrected twice.
  	bool bOutputLUTs = GetBackend()->SupportsOutputLUTs() && GetBackend()->OutputLUTsReady() && !bDoMuraCompensation &&
-@@ -3555,21 +3692,35 @@ paint_all( global_focus_t *pFocus, bool async )
+@@ -3555,21 +3692,34 @@ paint_all( global_focus_t *pFocus, bool async )
  
  	for (uint32_t i = 0; i < EOTF_Count; i++)
  	{
 -		if ( bOutputLUTs && i == EOTF_Gamma22 )
-+		if ( bOutputLUTs && i == EOTF_Gamma22 && !bAutoHdrFrame )
++		if ( bOutputLUTs && i == EOTF_Gamma22 )
  			continue;
  
 -		if ( g_ColorMgmtLuts[i].HasLuts() )
-+		if ( bAutoHdrFrame && i == EOTF_Gamma22 && g_AutoHdrDirectLuts.HasLuts() )
-+		{
-+			frameInfo.shaperLut[i] = g_AutoHdrDirectLuts.vk_lut1d;
-+			frameInfo.lut3D[i] = g_AutoHdrDirectLuts.vk_lut3d;
-+		}
-+		else if ( g_ColorMgmtLuts[i].HasLuts() )
++		if ( g_ColorMgmtLuts[i].HasLuts() )
  		{
  			frameInfo.shaperLut[i] = g_ColorMgmtLuts[i].vk_lut1d;
  			frameInfo.lut3D[i] = g_ColorMgmtLuts[i].vk_lut3d;
@@ -844,7 +846,11 @@ index 373d697..5997a97 100644
  	}
  
 +	if ( bAutoHdrFrame )
++	{
 +		frameInfo.layers.get( 0 ).autoHdr = true;
++		frameInfo.autoHdrShaperLut = g_AutoHdrDirectLuts.vk_lut1d;
++		frameInfo.autoHdrLut3D = g_AutoHdrDirectLuts.vk_lut3d;
++	}
 +	const bool bPrimaryFocus = pFocus == GetCurrentFocus();
 +
  	if ( pConnector && pConnector->Present( &frameInfo, async ) != 0 )
