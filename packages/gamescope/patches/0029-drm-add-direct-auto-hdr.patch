@@ -639,7 +639,7 @@ index e81b006..dda4c84 100644
 -#define VKR_LUT3D_COUNT 2 // Must match EOTF_Count
 +#define VKR_LUT3D_COUNT 3 // Gamma22, PQ, AutoHDR
 diff --git a/src/color_helpers.h b/src/color_helpers.h
-index cefa74e..0000000 100644
+index cefa74e..0e1461d 100644
 --- a/src/color_helpers.h
 +++ b/src/color_helpers.h
 @@ -247,6 +247,9 @@ struct displaycolorimetry_t
