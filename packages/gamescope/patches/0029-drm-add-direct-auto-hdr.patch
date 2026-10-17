@@ -11,10 +11,11 @@ Subject: [PATCH] gamescope: add Auto HDR presentation
  src/shaders/composite.h                |  19 +++
  src/shaders/descriptor_set.h           |   1 +
  src/shaders/descriptor_set_constants.h |   4 +-
- src/steamcompmgr.cpp                   | 173 +++++++++++++++++++++++++++++++-
+ src/color_helpers.h                     |   3 +
+ src/steamcompmgr.cpp                   | 178 +++++++++++++++++++++++++++++++-
  tests/meson.build                      |   3 +-
  tests/test_auto_hdr.cpp                |  46 ++++++++
- 10 files changed, 450 insertions(+), 42 deletions(-)
+ 11 files changed, 458 insertions(+), 42 deletions(-)
  create mode 100644 src/auto_hdr.h
  create mode 100644 tests/test_auto_hdr.cpp
 
@@ -637,6 +638,20 @@ index e81b006..dda4c84 100644
 @@ -12 +12 @@
 -#define VKR_LUT3D_COUNT 2 // Must match EOTF_Count
 +#define VKR_LUT3D_COUNT 3 // Gamma22, PQ, AutoHDR
+diff --git a/src/color_helpers.h b/src/color_helpers.h
+index cefa74e..0000000 100644
+--- a/src/color_helpers.h
++++ b/src/color_helpers.h
+@@ -247,6 +247,9 @@ struct displaycolorimetry_t
+ 	glm::vec2 white;
+ };
+ 
++glm::mat3 normalised_primary_matrix( const primaries_t & rgbPrimaries,
++	const glm::vec2 & whitePrimary, float whiteLuminance );
++
+ struct nightmode_t
+ {
+ 	bool operator == (const nightmode_t&) const = default;
 diff --git a/src/steamcompmgr.cpp b/src/steamcompmgr.cpp
 index 373d697..5997a97 100644
 --- a/src/steamcompmgr.cpp
@@ -667,7 +682,7 @@ index 373d697..5997a97 100644
  			lut3d_t * pLook = pSharedLook && pSharedLook->lutEdgeSize > 0 ? pSharedLook.get() : nullptr;
  
  			if ( inputEOTF == EOTF_Gamma22 )
-@@ -487,6 +490,104 @@ create_color_mgmt_luts(
+@@ -487,6 +490,109 @@ create_color_mgmt_luts(
  	}
  }
  
@@ -727,7 +742,12 @@ index 373d697..5997a97 100644
 +		g_AutoHdrLuts.lut1d[i * 4 + 3] = 0;
 +	}
 +
-+	const glm::mat3 &autoHdrInputToPq = k_2020_from_709;
++	displaycolorimetry_t autoHdrInputColorimetry{};
++	colormapping_t autoHdrInputMapping{};
++	buildSDRColorimetry( &autoHdrInputColorimetry, &autoHdrInputMapping,
++		g_ColorMgmt.current.sdrGamutWideness, g_ColorMgmt.current.displayColorimetry );
++	const glm::mat3 autoHdrInputToPq = k_2020_from_xyz * normalised_primary_matrix(
++		autoHdrInputColorimetry.primaries, autoHdrInputColorimetry.white, 1.0f );
 +	for ( uint32_t b = 0; b < s_nLutEdgeSize3d; b++ )
 +	{
 +		for ( uint32_t g = 0; g < s_nLutEdgeSize3d; g++ )
@@ -772,7 +792,7 @@ index 373d697..5997a97 100644
  gamescope::ConVar<bool> cv_tearing_enabled{ "tearing_enabled", false, "Whether or not tearing is enabled." };
  int g_nSteamMaxHeight = 0;
  bool g_bVRRCapable_CachedValue = false;
-@@ -494,10 +569,46 @@ bool g_bVRRInUse_CachedValue = false;
+@@ -494,10 +574,46 @@ bool g_bVRRInUse_CachedValue = false;
  bool g_bSupportsHDR_CachedValue = false;
  bool g_bForceHDR10OutputDebug = false;
  gamescope::ConVar<bool> cv_hdr_enabled{ "hdr_enabled", false, "Whether or not HDR is enabled if it is available." };
@@ -819,7 +839,7 @@ index 373d697..5997a97 100644
  // Follows the panel backlight over sysfs for panels that ignore it in PQ. steamcompmgr thread only.
  class CBacklightWatcher final : public gamescope::IWaitable
  {
-@@ -694,6 +783,7 @@ update_color_mgmt()
+@@ -694,6 +788,7 @@ update_color_mgmt()
  
  	g_ColorMgmt.serial = ++s_NextColorMgmtSerial;
  	g_ColorMgmt.current = g_ColorMgmt.pending;
@@ -827,7 +847,7 @@ index 373d697..5997a97 100644
  	s_bCurrentScaleSDRWhite = bScaleSDRWhite;
  }
  
-@@ -3205,6 +3295,8 @@ paint_all( global_focus_t *pFocus, bool async )
+@@ -3205,6 +3300,8 @@ paint_all( global_focus_t *pFocus, bool async )
  	frameInfo.eUpscaleFilter = pFocus->eUpscaleFilter;
  	frameInfo.eUpscaleScaler = pFocus->eUpscaleScaler;
  	frameInfo.nUpscaleSharpness = pFocus->nUpscaleSharpness;
@@ -836,7 +856,7 @@ index 373d697..5997a97 100644
  
  	// With no window a lease companion presents an empty frame to power its output down.
  	if ( g_sDrmLeaseClientSocket && !w )
-@@ -3540,6 +3671,9 @@ paint_all( global_focus_t *pFocus, bool async )
+@@ -3540,6 +3676,9 @@ paint_all( global_focus_t *pFocus, bool async )
  		frameInfo.applyOutputColorMgmt = false;
  	}
  
@@ -846,7 +866,7 @@ index 373d697..5997a97 100644
  	// The output applies the gamma 2.2 shaper + 3D LUT post-blend, so the shader
  	// leaves them unbound and a composited frame is not corrected twice.
  	bool bOutputLUTs = GetBackend()->SupportsOutputLUTs() && GetBackend()->OutputLUTsReady() && !bDoMuraCompensation &&
-@@ -3555,21 +3688,34 @@ paint_all( global_focus_t *pFocus, bool async )
+@@ -3555,21 +3693,34 @@ paint_all( global_focus_t *pFocus, bool async )
  
  	for (uint32_t i = 0; i < EOTF_Count; i++)
  	{
@@ -883,7 +903,7 @@ index 373d697..5997a97 100644
  	std::optional<gamescope::GamescopeScreenshotInfo> oScreenshotInfo =
  		gamescope::CScreenshotManager::Get().ProcessPendingScreenshot();
  
-@@ -7561,6 +7663,7 @@ handle_property_notify(xwayland_ctx_t *ctx, XPropertyEvent *ev)
+@@ -7561,6 +7668,7 @@ handle_property_notify(xwayland_ctx_t *ctx, XPropertyEvent *ev)
  			g_flHDRItmSdrNits = 100.f;
  		else if ( g_flHDRItmSdrNits > 1000.f)
  			g_flHDRItmSdrNits = 1000.f;
@@ -891,7 +911,7 @@ index 373d697..5997a97 100644
  		hasRepaint = true;
  	}
  	if ( ev->atom == ctx->atoms.gamescopeHDRItmTargetNits )
-@@ -7888,6 +8042,7 @@ steamcompmgr_exit(void)
+@@ -7888,6 +8047,7 @@ steamcompmgr_exit(void)
  	g_steamcompmgr_xdg_wins.clear();
  
  	for ( auto &lut : g_ColorMgmtLuts ) lut.shutdown();
@@ -899,7 +919,7 @@ index 373d697..5997a97 100644
  	for ( auto &lut : g_ColorMgmtLutsOverride ) lut.shutdown();
  	for ( auto &lut : g_ScreenshotColorMgmtLuts ) lut.shutdown();
  	for ( auto &lut : g_ScreenshotColorMgmtLutsHDR ) lut.shutdown();
-@@ -10350,13 +10499,14 @@ steamcompmgr_main(int argc, char **argv)
+@@ -10350,13 +10504,14 @@ steamcompmgr_main(int argc, char **argv)
  
  		// Capability is advertised to clients regardless of the live "active"
  		// state below, so games can request HDR while the panel is idling in SDR.
@@ -917,7 +937,7 @@ index 373d697..5997a97 100644
  
  			bool bOutputHDRActive = bOutputHDRCapable;
  			if ( bContentDriven )
-@@ -10577,7 +10681,7 @@ steamcompmgr_main(int argc, char **argv)
+@@ -10577,7 +10686,7 @@ steamcompmgr_main(int argc, char **argv)
  					app_hdr_metadata = pCurrentFocus->HeldCommits[HELD_COMMIT_BASE]->feedback->hdr_metadata_blob;
  			}
  

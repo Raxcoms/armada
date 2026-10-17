@@ -39,8 +39,9 @@ require '^\+[[:space:]]*frameInfo\.autoHdrLut3D = g_AutoHdrLuts\.vk_lut3d;$' 'de
 require '^\+[[:space:]]*bool autoHdrLut = c_auto_hdr_lut_enable && colorspaceLayerIdx == 0;$' 'base-layer Auto HDR LUT path'
 require '^\+[[:space:]]*g_bAutoHdrFramePresented = pConnector && bAutoHdrFrame;$' 'HDR reporting after presentation'
 require '^\+[[:space:]]*const glm::vec3 linearInput\{$' 'linear-light LUT input'
-require '^\+[[:space:]]*const glm::mat3 &autoHdrInputToPq = k_2020_from_709;$' 'existing Rec.709-to-Rec.2020 conversion'
-require '^\+[[:space:]]*autoHdrInputToPq \* linearInput,$' 'Rec.709 primary conversion'
+require '^\+[[:space:]]*buildSDRColorimetry\( &autoHdrInputColorimetry, &autoHdrInputMapping,$' 'existing SDR gamut policy'
+require '^\+[[:space:]]*const glm::mat3 autoHdrInputToPq = k_2020_from_xyz \* normalised_primary_matrix\($' 'SDR gamut to Rec.2020 conversion'
+require '^\+[[:space:]]*autoHdrInputToPq \* linearInput,$' 'SDR gamut primary conversion'
 require '^\+[[:space:]]*const float targetNits = g_ColorMgmt\.current\.flInternalDisplayBrightness;$' 'active display peak target'
 require '^\+[[:space:]]*g_flHDRItmSdrNits, targetNits \);$' 'peak-aware inverse tone mapping'
 
