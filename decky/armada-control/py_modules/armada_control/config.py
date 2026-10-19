@@ -19,6 +19,7 @@ from .system import (
     swipe_gestures_enabled,
 )
 from .tweaks import (
+    auto_hdr_supported,
     fex_profile_labels,
     load_env_presets,
     load_fex_contract,
@@ -43,6 +44,7 @@ def build_config(include_games=True):
         "perf": perf_info(),
         "cpuDeviceClass": env.get("ARMADA_SOC_CLASS", ""),
         "rgbSupported": rgb_supported(),
+        "autoHdrSupported": auto_hdr_supported(env),
         "protonDefaults": [
             default.strip()
             for default in env.get("ARMADA_PROTON_DEFAULTS", "").split(":")
