@@ -1,7 +1,7 @@
 import { Focusable, GamepadButton } from "@decky/ui";
-import type { GamepadEvent } from "@decky/ui";
-import { useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { FocusableProps, GamepadEvent } from "@decky/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ComponentType, PointerEvent as ReactPointerEvent } from "react";
 import { t } from "../i18n";
 import {
   CURVE_PWM_MAX as PWM_MAX,
@@ -27,6 +27,7 @@ const TEMP_TICKS = [0, 20, 40, 60, 80, 100, 120];
 const PWM_TICK_PERCENTS = [0, 25, 50, 75, 100];
 const CONTROLLER_TEMP_STEP = 1;
 const CONTROLLER_PWM_STEP = 5;
+const GraphFocusable = Focusable as ComponentType<FocusableProps & { focusable: boolean }>;
 
 function xForTemp(temp: number) {
   return PAD_LEFT + (clamp(temp, TEMP_MIN, TEMP_MAX) - TEMP_MIN) / (TEMP_MAX - TEMP_MIN) * PLOT_W;
@@ -39,12 +40,19 @@ function yForPwm(pwm: number) {
 interface DragState {
   points: CurvePoint[];
   index: number;
+  target: SVGCircleElement;
+  pointerId: number;
 }
 
-export function FanCurveGraph({ points, onChange, currentTemp }: {
+function releaseDrag(drag: DragState | null) {
+  if (drag?.target.hasPointerCapture(drag.pointerId)) drag.target.releasePointerCapture(drag.pointerId);
+}
+
+export function FanCurveGraph({ points, onChange, currentTemp, disabled = false }: {
   points: CurvePoint[];
   onChange: (next: CurvePoint[]) => void;
   currentTemp?: number | null;
+  disabled?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -52,8 +60,17 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [controllerActive, setControllerActive] = useState(false);
   const [controllerIndex, setControllerIndex] = useState(0);
-  const shown = livePoints ?? points;
+  const editing = controllerActive && !disabled;
+  const shown = disabled ? points : livePoints ?? points;
   const sorted = useMemo(() => [...shown].sort(compareCurvePoints), [shown]);
+  useEffect(() => {
+    if (!disabled) return;
+    releaseDrag(dragRef.current);
+    dragRef.current = null;
+    setLivePoints(null);
+    setActiveIndex(null);
+    setControllerActive(false);
+  }, [disabled]);
   if (!sorted.length) return null;
 
   const eventToPoint = (e: ReactPointerEvent): CurvePoint | null => {
@@ -69,12 +86,14 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
     return { temp: clamp(temp, TEMP_MIN, TEMP_MAX), pwm: clamp(pwm, PWM_MIN, PWM_MAX) };
   };
   const onPointerDown = (index: number) => (e: ReactPointerEvent<SVGCircleElement>) => {
+    if (disabled) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { points: points.map((p) => ({ ...p })), index };
+    dragRef.current = { points: points.map((p) => ({ ...p })), index, target: e.currentTarget, pointerId: e.pointerId };
     setActiveIndex(index);
     setLivePoints(points.map((p) => ({ ...p })));
   };
   const onPointerMove = (e: ReactPointerEvent<SVGCircleElement>) => {
+    if (disabled) return;
     const drag = dragRef.current;
     if (!drag) return;
     const next = eventToPoint(e);
@@ -82,31 +101,27 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
     drag.points[drag.index] = next;
     setLivePoints([...drag.points]);
   };
-  const endDrag = (e: ReactPointerEvent<SVGCircleElement>) => {
+  const endDrag = () => {
     const drag = dragRef.current;
     if (!drag) return;
     dragRef.current = null;
     setActiveIndex(null);
     setLivePoints(null);
-    onChange(drag.points);
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      // already released (e.g. pointercancel) -- fine to ignore
-    }
+    releaseDrag(drag);
+    if (!disabled) onChange(drag.points);
   };
   const enterControllerMode = () => {
-    if (!points.length) return;
+    if (disabled || !points.length) return;
     setControllerActive(true);
     setControllerIndex((current) => clamp(current, 0, points.length - 1));
   };
   const exitControllerMode = () => setControllerActive(false);
   const cycleControllerPoint = (delta: number) => {
-    if (!points.length) return;
+    if (disabled || !points.length) return;
     setControllerIndex((current) => (current + delta + points.length) % points.length);
   };
   const moveControllerPoint = (deltaTemp: number, deltaPwm: number) => {
-    if (!points.length) return;
+    if (disabled || !points.length) return;
     const index = clamp(controllerIndex, 0, points.length - 1);
     const current = points[index];
     const lowerBound = index > 0 ? points[index - 1].temp + 1 : TEMP_MIN;
@@ -117,6 +132,7 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
     onChange(points.map((point, i) => (i === index ? { temp: nextTemp, pwm: nextPwm } : point)));
   };
   const handleGraphButtonDown = (e: GamepadEvent) => {
+    if (!editing) return;
     switch (e.detail.button) {
       case GamepadButton.BUMPER_LEFT:
         cycleControllerPoint(-1);
@@ -131,6 +147,7 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
     e.stopPropagation();
   };
   const handleGraphDirection = (e: GamepadEvent) => {
+    if (!editing) return;
     switch (e.detail.button) {
       case GamepadButton.DIR_UP:
         moveControllerPoint(0, CONTROLLER_PWM_STEP);
@@ -184,22 +201,24 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
   const currentTempY = hasCurrentTemp ? yForPwm(interpolatePwm(currentTemp as number)) : 0;
 
   return (
-    <Focusable
-      className={controllerActive ? "afc-graph-focusable afc-graph-editing" : "afc-graph-focusable"}
+    <GraphFocusable
+      className={editing ? "afc-graph-focusable afc-graph-editing" : "afc-graph-focusable"}
       focusClassName="afc-graph-focused"
+      focusable={!disabled}
+      aria-disabled={disabled}
       onActivate={enterControllerMode}
       onOKButton={enterControllerMode}
-      onCancelButton={controllerActive ? (event) => {
+      onCancelButton={editing ? (event) => {
         event.preventDefault();
         event.stopPropagation();
         exitControllerMode();
       } : undefined}
-      onButtonDown={controllerActive ? handleGraphButtonDown : undefined}
-      onGamepadDirection={controllerActive ? handleGraphDirection : undefined}
-      onGamepadBlur={controllerActive ? exitControllerMode : undefined}
-      onOKActionDescription={controllerActive ? undefined : t("fanCurve.editPoint")}
-      onCancelActionDescription={controllerActive ? t("fanCurve.stopEditing") : undefined}
-      actionDescriptionMap={controllerActive ? {
+      onButtonDown={editing ? handleGraphButtonDown : undefined}
+      onGamepadDirection={editing ? handleGraphDirection : undefined}
+      onGamepadBlur={editing ? exitControllerMode : undefined}
+      onOKActionDescription={editing || disabled ? undefined : t("fanCurve.editPoint")}
+      onCancelActionDescription={editing ? t("fanCurve.stopEditing") : undefined}
+      actionDescriptionMap={editing ? {
         [GamepadButton.BUMPER_LEFT]: t("fanCurve.previousPoint"),
         [GamepadButton.BUMPER_RIGHT]: t("fanCurve.nextPoint"),
       } : undefined}
@@ -255,9 +274,9 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
       ) : null}
       {sorted.map((point) => {
         const index = shown.indexOf(point);
-        const isActive = activeIndex !== null
+        const isActive = !disabled && (activeIndex !== null
           ? shown[activeIndex] === point
-          : controllerActive && clamp(controllerIndex, 0, points.length - 1) === index;
+          : editing && clamp(controllerIndex, 0, points.length - 1) === index);
         return (
           <g key={`point-${index}`}>
             <circle
@@ -293,7 +312,7 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
         );
       })}
       </svg>
-      {controllerActive ? (
+      {editing ? (
         <div className="afc-controller-hint">
           {t("fanCurve.controllerEditStatus", {
             current: clamp(controllerIndex, 0, points.length - 1) + 1,
@@ -301,6 +320,6 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
           })}
         </div>
       ) : null}
-    </Focusable>
+    </GraphFocusable>
   );
 }

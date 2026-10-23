@@ -56,7 +56,7 @@ export function FanCurveEditor({ state, setState, selected, currentTemp, disable
           : t("fanCurve.unassigned")}
       </SupportingText>
       <DialogControlsSectionHeader>{t("power.fanCurve")}</DialogControlsSectionHeader>
-      <FanCurveGraph points={points} onChange={commitPoints} currentTemp={currentTemp} />
+      <FanCurveGraph points={points} onChange={commitPoints} currentTemp={currentTemp} disabled={disabled} />
       <SupportingText>{t("fanCurve.advancedEditInstructions", { min: CURVE_PWM_MIN, max: CURVE_PWM_MAX })}</SupportingText>
       {belowMinPoint ? <DialogButton disabled={disabled} onClick={fixMinPwm}>{t("fanCurve.belowMinimumWarning")}</DialogButton> : null}
       <ToggleField label={t("fanCurve.stop")} description={t("fanCurve.stopDescription")} checked={fanStopEnabled} onChange={toggleFanStop} disabled={disabled} />

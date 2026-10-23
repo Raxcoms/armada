@@ -41,6 +41,7 @@ const nativeSelector = (key: string) => {
 const nativeField = nativeSelector("Field");
 const nativeRow = nativeSelector("PanelSectionRow");
 const nativeSection = nativeSelector("PanelSection");
+const disabledButton = ":is(.armada-control-tabs .armada-control-tab-content, .armada-control-tabs .armada-tab-navigation, .armada-control-dialog-position .armada-control-dialog, .armada-control-startup) button.DialogButton:is(.Disabled, :disabled)";
 const finalFieldStyles = `
       .armada-control-tab-content ${nativeSection} > ${nativeRow}:not(:has(~ :not(.armada-supporting-text))) ${nativeField}::after,
       .armada-control-tab-content ${nativeSection} > ${nativeField}:not(:has(~ :not(.armada-supporting-text)))::after,
@@ -51,6 +52,16 @@ const finalFieldStyles = `
 `;
 
 export const styles = `
+      ${disabledButton} {
+        background: ${theme.disabledSurface};
+        color: ${theme.disabledText};
+        opacity: 1;
+        cursor: not-allowed;
+      }
+      ${disabledButton}:is(.gpfocus, :focus-visible) {
+        outline: ${theme.focusRingWidth} solid ${theme.disabledText};
+        outline-offset: calc(-1 * ${theme.focusRingWidth});
+      }
       .armada-control-tabs {
         box-sizing: border-box;
         width: 100%;
@@ -141,6 +152,10 @@ export const styles = `
         min-width: 0;
         width: auto;
         margin: 0;
+      }
+      .afc-scope .afc-graph-focusable[aria-disabled="true"] {
+        opacity: ${theme.disabledOpacity};
+        cursor: not-allowed;
       }
       .afc-scope .afc-graph-focusable {
         display: block;
