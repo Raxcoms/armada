@@ -8,6 +8,11 @@ export interface PowerProfile {
   fan_curve: string;
 }
 
+export interface SleepLogsStatus {
+  enabled: boolean;
+  directory: string | null;
+}
+
 export interface FanCurve {
   label: string;
   curve: string;
@@ -26,6 +31,8 @@ export interface GameTweak {
   name?: string;
   fexProfile?: string;
   fexConfig?: Record<string, string>;
+  steamCompatTool?: string;
+  steamResolution?: string;
   turnipDriver?: string;
   thunks?: Record<string, boolean>;
   [key: string]: any;
@@ -93,6 +100,7 @@ export interface CalibrationState {
   canApply?: boolean;
   backend?: string;
   saved?: boolean;
+  calibratedAt?: string | null;
   params?: Record<string, number>;
   progress?: CalibrationProgress;
 }
@@ -162,6 +170,7 @@ export interface Config {
   controllerType: string;
   controllerTypes: DropdownChoice[];
   calibration?: CalibrationState;
+  calibratedAt?: string | null;
   game?: GameRef | null;
   selectedGame?: GameRef | null;
 }

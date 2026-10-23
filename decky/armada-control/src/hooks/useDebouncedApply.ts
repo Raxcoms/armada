@@ -4,10 +4,16 @@ import { useEffect, useRef } from "react";
 // Module-level so a closed panel's last change still lands before changes from a reopened one.
 let queue: Promise<void> = Promise.resolve();
 
-export function useDebouncedApply(
-  read: () => Promise<number>,
-  show: (value: number) => void,
-  apply: (value: number) => Promise<number>,
+export function readAfterPendingApplies<T>(read: () => Promise<T>): Promise<T> {
+  const result = queue.then(read);
+  queue = result.then(() => {}, () => {});
+  return result;
+}
+
+export function useDebouncedApply<T>(
+  read: () => Promise<T>,
+  show: (value: T) => void,
+  apply: (value: T) => Promise<T>,
   errorTitle: string,
   delay: number,
 ) {
@@ -22,7 +28,7 @@ export function useDebouncedApply(
     request.current += 1;
   }, []);
 
-  return (value: number) => {
+  return (value: T) => {
     show(value);
     window.clearTimeout(timer.current);
     const current = ++request.current;

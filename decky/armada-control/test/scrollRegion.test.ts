@@ -1,0 +1,201 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { bindScrollPadding, findScrollParent, revealScrollRegion } from "../src/lib/scrollRegion.ts";
+
+function focusRegion(scale = 1) {
+  const calls: ScrollToOptions[] = [];
+  let current = 0;
+  let animationTarget: number | undefined;
+  const scroller = {
+    clientHeight: 400, clientTop: 0, offsetHeight: 400,
+    get scrollTop() { return current; },
+    getBoundingClientRect: () => ({ top: 20, height: 400 * scale }),
+    scrollTo: (options: ScrollToOptions) => {
+      calls.push(options);
+      animationTarget = undefined;
+      current = Math.max(0, options.top || 0);
+    },
+  } as HTMLElement;
+  const target = (top: number, height = 80) => ({
+    getBoundingClientRect: () => ({
+      top: 20 + (top - current) * scale,
+      bottom: 20 + (top + height - current) * scale,
+      height: height * scale,
+    }),
+  }) as HTMLElement;
+  return {
+    scroller, calls, target,
+    animateTo: (offset: number) => { animationTarget = offset; },
+    get animationTarget() { return animationTarget; },
+  };
+}
+
+test("native focus scrolling keeps the full final field visible below the sticky header", () => {
+  const region = focusRegion();
+  region.animateTo(120);
+  revealScrollRegion(region.scroller, region.target(600), 100);
+  assert.deepEqual(region.calls, [{ top: 280, behavior: "instant" }]);
+  assert.equal(region.animationTarget, undefined);
+  assert.equal(region.target(600).getBoundingClientRect().bottom, 420);
+});
+
+test("rapid native focus changes cancel old motion and use only the current field bounds", () => {
+  const region = focusRegion();
+  revealScrollRegion(region.scroller, region.target(600), 100);
+  region.animateTo(650);
+  revealScrollRegion(region.scroller, region.target(140), 100);
+  assert.deepEqual(region.calls, [{ top: 280, behavior: "instant" }, { top: 60, behavior: "instant" }]);
+  assert.equal(region.target(140).getBoundingClientRect().top, 100);
+  assert.equal(region.animationTarget, undefined);
+  region.animateTo(500);
+  revealScrollRegion(region.scroller, region.target(140), 100);
+  assert.deepEqual(region.calls.at(-1), { top: 60, behavior: "instant" });
+  assert.equal(region.animationTarget, undefined);
+});
+
+test("fields taller than the visible panel keep their label at the start", () => {
+  const region = focusRegion();
+  revealScrollRegion(region.scroller, region.target(500, 500), 100);
+  assert.equal(region.target(500, 500).getBoundingClientRect().top, 100);
+});
+
+test("focus visibility uses transformed bounds without scaling the scroll distance twice", () => {
+  const region = focusRegion(1.5);
+  revealScrollRegion(region.scroller, region.target(600), 140);
+  assert.equal(region.scroller.scrollTop, 280);
+  revealScrollRegion(region.scroller, region.target(140), 140);
+  assert.equal(region.scroller.scrollTop, 60);
+  assert.equal(region.target(140).getBoundingClientRect().top, 140);
+});
+
+function setup() {
+  const values = new Map<string, { value: string; priority: string }>();
+  const document: any = {
+    body: {}, documentElement: {},
+    defaultView: { getComputedStyle: (element: any) => element.computed },
+  };
+  const scroller: any = {
+    ownerDocument: document,
+    parentElement: document.body,
+    computed: { overflowY: "auto", scrollPaddingTop: "48px", scrollPaddingBottom: "16px" },
+    style: {
+      getPropertyValue: (key: string) => values.get(key)?.value || "",
+      getPropertyPriority: (key: string) => values.get(key)?.priority || "",
+      setProperty: (key: string, value: string, priority = "") => { values.set(key, { value, priority }); },
+      removeProperty: (key: string) => { values.delete(key); },
+    },
+  };
+  return { document, scroller, values };
+}
+
+test("scroll regions use the owner's native overflow ancestor even before content overflows", () => {
+  const { document, scroller } = setup();
+  const wrapper: any = { ownerDocument: document, parentElement: scroller, computed: { overflowY: "visible" } };
+  const control: any = { ownerDocument: document, parentElement: wrapper };
+  assert.equal(findScrollParent(control), scroller);
+});
+
+test("scroll discovery never selects the Steam document or page root", () => {
+  const { document } = setup();
+  document.body.computed = { overflowY: "auto" };
+  assert.equal(findScrollParent({ ownerDocument: document, parentElement: document.body } as HTMLElement), null);
+});
+
+test("sticky bounds preserve larger native padding and update measured sizes without compounding", () => {
+  const { scroller, values } = setup();
+  const padding = bindScrollPadding(scroller);
+  padding.set("top", 81);
+  assert.equal(values.get("scroll-padding-top")?.value, "81px");
+  padding.set("top", 60);
+  assert.equal(values.get("scroll-padding-top")?.value, "60px");
+  padding.set("bottom", 0);
+  assert.equal(values.get("scroll-padding-bottom")?.value, "16px");
+  padding.set("top", 20);
+  assert.equal(values.get("scroll-padding-top")?.value, "48px");
+  padding.restore();
+  assert.equal(values.size, 0);
+});
+
+test("unmount restores original inline padding and does not overwrite a newer owner's change", () => {
+  const { scroller, values } = setup();
+  scroller.style.setProperty("scroll-padding-top", "52px", "important");
+  const padding = bindScrollPadding(scroller);
+  padding.set("top", 90);
+  padding.restore();
+  assert.deepEqual(values.get("scroll-padding-top"), { value: "52px", priority: "important" });
+  const next = bindScrollPadding(scroller);
+  next.set("top", 90);
+  scroller.style.setProperty("scroll-padding-top", "100px");
+  next.restore();
+  assert.equal(values.get("scroll-padding-top")?.value, "100px");
+});
+
+test("percentage native padding remains responsive instead of being treated as pixels", () => {
+  const { scroller, values } = setup();
+  scroller.clientHeight = 600;
+  scroller.computed.scrollPaddingTop = "10%";
+  const padding = bindScrollPadding(scroller);
+  padding.set("top", 48);
+  assert.equal(values.get("scroll-padding-top")?.value, "max(10%, 48px)");
+  scroller.clientHeight = 1200;
+  padding.set("top", 60);
+  assert.equal(values.get("scroll-padding-top")?.value, "max(10%, 60px)");
+  padding.restore();
+  assert.equal(values.size, 0);
+});
+
+test("native calc and clamp expressions retain their length-percentage configuration without compounding", () => {
+  const { scroller, values } = setup();
+  scroller.computed.scrollPaddingTop = "calc(10% + 2px)";
+  scroller.computed.scrollPaddingBottom = "clamp(16px, 8%, 80px)";
+  const padding = bindScrollPadding(scroller);
+  padding.set("top", 48);
+  padding.set("bottom", 24);
+  assert.equal(values.get("scroll-padding-top")?.value, "max(calc(10% + 2px), 48px)");
+  assert.equal(values.get("scroll-padding-bottom")?.value, "max(clamp(16px, 8%, 80px), 24px)");
+  padding.set("top", 60);
+  assert.equal(values.get("scroll-padding-top")?.value, "max(calc(10% + 2px), 60px)");
+});
+
+test("auto and empty native padding use only the nonnegative measured inset", () => {
+  const { scroller, values } = setup();
+  scroller.computed.scrollPaddingTop = "auto";
+  scroller.computed.scrollPaddingBottom = "";
+  const padding = bindScrollPadding(scroller);
+  padding.set("top", 48);
+  padding.set("bottom", 16);
+  assert.equal(values.get("scroll-padding-top")?.value, "48px");
+  assert.equal(values.get("scroll-padding-bottom")?.value, "16px");
+  padding.set("top", -10);
+  assert.equal(values.get("scroll-padding-top")?.value, "0px");
+});
+
+test("percentage cleanup restores original priorities and leaves a later native expression alone", () => {
+  const { scroller, values } = setup();
+  scroller.computed.scrollPaddingTop = "10%";
+  scroller.style.setProperty("scroll-padding-top", "10%", "important");
+  const padding = bindScrollPadding(scroller);
+  padding.set("top", 48);
+  padding.restore();
+  assert.deepEqual(values.get("scroll-padding-top"), { value: "10%", priority: "important" });
+  const next = bindScrollPadding(scroller);
+  next.set("top", 60);
+  scroller.style.setProperty("scroll-padding-top", "calc(12% + 4px)");
+  next.restore();
+  assert.equal(values.get("scroll-padding-top")?.value, "calc(12% + 4px)");
+});
+
+test("cleanup compares the browser's serialized CSS math rather than the assigned string", () => {
+  const { scroller, values } = setup();
+  scroller.computed.scrollPaddingTop = "calc(10% + 2px)";
+  const write = scroller.style.setProperty;
+  scroller.style.setProperty = (key: string, value: string, priority = "") => {
+    write(key, value.replace("max(calc(10% + 2px), ", "max(10% + 2px, "), priority);
+  };
+  const padding = bindScrollPadding(scroller);
+  padding.set("top", 48);
+  assert.equal(values.get("scroll-padding-top")?.value, "max(10% + 2px, 48px)");
+  padding.restore();
+  assert.equal(values.has("scroll-padding-top"), false);
+});
+

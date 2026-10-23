@@ -1,5 +1,5 @@
 import { call } from "@decky/api";
-import type { CalibrationState, CompatAppliedState, Config, CurvesState, FanCurve, FanSettings, InstalledGame, PowerConfig, RgbConfig, Tweaks } from "./types";
+import type { CalibrationState, CompatAppliedState, Config, CurvesState, FanCurve, FanSettings, InstalledGame, PowerConfig, RgbConfig, SleepLogsStatus, Tweaks } from "./types";
 
 export const getConfig = () => call<[], Config>("get_config");
 export const getInstalledGames = () => call<[], InstalledGame[]>("get_installed_games");
@@ -25,6 +25,7 @@ export const getBottomScreenActive = () => call<[], boolean>("get_bottom_screen_
 export const setDesktopMode = (value: string) => call<[string], string>("set_desktop_mode", value);
 export const setSleepMode = (value: string) => call<[string], string>("set_sleep_mode", value);
 export const getSleepLogsEnabled = () => call<[], boolean>("get_sleep_logs_enabled");
+export const getSleepLogsStatus = () => call<[], SleepLogsStatus>("get_sleep_logs_status");
 export const setSleepLogsEnabled = (enabled: boolean) => call<[boolean], boolean>("set_sleep_logs_enabled", enabled);
 export const reapplyPerf = () => call<[], { pids?: number }>("reapply_perf");
 export const restartGameMode = () => call<[], boolean>("restart_game_mode");
