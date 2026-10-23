@@ -1,6 +1,7 @@
 import { revealScrollRegion } from "./scrollRegion";
 
 const modalSelector = ".armada-control-dialog";
+const positionSelector = ".armada-control-dialog-position";
 const headingSelector = ".armada-control-dialog-heading";
 const footerSelector = ".armada-control-dialog-footer";
 
@@ -12,9 +13,11 @@ function isScrollRegion(element: HTMLElement) {
 export function revealModalStart(target: HTMLElement | null): boolean {
   const modal = target?.closest<HTMLElement>(modalSelector);
   if (!modal) return false;
+  const container = modal.closest<HTMLElement>(positionSelector) || modal;
   let handled = false;
-  for (const element of [modal, ...modal.querySelectorAll<HTMLElement>("*")]) {
-    if (element.closest(modalSelector) !== modal || !isScrollRegion(element)) continue;
+  for (const element of [container, ...container.querySelectorAll<HTMLElement>("*")]) {
+    const owned = element.contains(modal) || (modal.contains(element) && element.closest(modalSelector) === modal);
+    if (!owned || element.closest(positionSelector) !== modal.closest(positionSelector) || !isScrollRegion(element)) continue;
     element.scrollTo({ top: 0, behavior: "instant" });
     handled = true;
   }
@@ -29,8 +32,9 @@ export function revealModalFocus(boundary: HTMLElement | null, target: HTMLEleme
     || target.closest<HTMLElement>(".DialogInputLabelGroup");
   const region = target.closest<HTMLElement>(footerSelector) || field || target;
   const visible = modal.contains(region) ? region : target;
+  const container = modal.closest<HTMLElement>(positionSelector) || modal;
   let handled = false;
-  for (let parent = visible.parentElement; parent && modal.contains(parent); parent = parent.parentElement) {
+  for (let parent = visible.parentElement; parent && container.contains(parent); parent = parent.parentElement) {
     if (!isScrollRegion(parent)) continue;
     revealScrollRegion(parent, visible, parent.getBoundingClientRect().top);
     handled = true;

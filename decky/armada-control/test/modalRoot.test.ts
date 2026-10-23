@@ -37,9 +37,10 @@ test("modal scrolling uses one native navigation boundary without changing nativ
   const { ArmadaModalRoot } = setup();
   const children = [{ type: "DialogBody" }, { type: "DialogFooter" }];
   const closeModal = () => {};
-  const root = ArmadaModalRoot({ children, className: "editor", closeModal, bAllowFullSize: true });
+  const root = ArmadaModalRoot({ children, className: "editor", modalClassName: "position", closeModal, bAllowFullSize: true });
   assert.equal(root.type, "ModalRoot");
   assert.equal(root.props.className, "armada-control-dialog editor");
+  assert.equal(root.props.modalClassName, "armada-control-dialog-position position");
   assert.equal(root.props.closeModal, closeModal);
   assert.equal(root.props.bAllowFullSize, true);
   const [styles, boundary] = root.props.children;

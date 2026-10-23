@@ -220,3 +220,38 @@ test("unowned targets and dialogs without a native scroll region use native fall
   assert.deepEqual(modal.calls, []);
   assert.deepEqual(outside.calls, []);
 });
+
+test("Steam's outer modal position scrolls when the content root has no overflow", () => {
+  const { document, outside } = setup();
+  const position = new TestElement(document, { parent: outside, className: "armada-control-dialog-position", height: 400, overflow: "auto" });
+  const modal = new TestElement(document, { parent: position, className: "armada-control-dialog", height: 900 });
+  const boundary = new TestElement(document, { parent: modal });
+  const field = new TestElement(document, { parent: boundary, className: "native-field", top: 600, height: 100 });
+  assert.equal(reveal(boundary, field), true);
+  assert.deepEqual(position.calls, [{ top: 300, behavior: "instant" }]);
+  assert.equal(field.getBoundingClientRect().bottom, position.getBoundingClientRect().bottom);
+  position.pendingAnimation = 600;
+  const heading = new TestElement(document, { parent: boundary, className: "armada-control-dialog-heading" });
+  assert.equal(start(heading), true);
+  assert.deepEqual(position.calls.at(-1), { top: 0, behavior: "instant" });
+  assert.equal(position.pendingAnimation, undefined);
+  assert.deepEqual(outside.calls, []);
+});
+
+test("a nested confirmation scrolls only its own outer position", () => {
+  const { document, outside } = setup();
+  const parentPosition = new TestElement(document, { parent: outside, className: "armada-control-dialog-position", overflow: "auto" });
+  const parent = new TestElement(document, { parent: parentPosition, className: "armada-control-dialog" });
+  const parentBoundary = new TestElement(document, { parent });
+  const position = new TestElement(document, { parent: parentBoundary, className: "armada-control-dialog-position", height: 300, overflow: "auto" });
+  const modal = new TestElement(document, { parent: position, className: "armada-control-dialog" });
+  const boundary = new TestElement(document, { parent: modal });
+  const footer = new TestElement(document, { parent: boundary, className: "armada-control-dialog-footer", top: 600, height: 60 });
+  assert.equal(reveal(parentBoundary, footer), false);
+  assert.equal(reveal(boundary, footer), true);
+  assert.equal(position.scrollTop, 360);
+  assert.deepEqual(parentPosition.calls, []);
+  start(parentBoundary);
+  assert.equal(position.scrollTop, 360);
+  assert.deepEqual(parentPosition.calls, [{ top: 0, behavior: "instant" }]);
+});

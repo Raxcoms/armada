@@ -30,10 +30,14 @@ export function ArmadaDialogHeader({ children }: { children: ReactNode }) {
   </DialogHeader>;
 }
 
-export function ArmadaModalRoot({ children, className = "", ...props }: ModalRootProps) {
+export function ArmadaModalRoot({ children, className = "", modalClassName = "", ...props }: ModalRootProps) {
   const boundary = useRef<HTMLDivElement>(null);
   return (
-    <ModalRoot {...props} className={["armada-control-dialog", className].filter(Boolean).join(" ")}>
+    <ModalRoot
+      {...props}
+      className={["armada-control-dialog", className].filter(Boolean).join(" ")}
+      modalClassName={["armada-control-dialog-position", modalClassName].filter(Boolean).join(" ")}
+    >
       <ArmadaStyles />
       <ModalNavigation
         ref={boundary}
