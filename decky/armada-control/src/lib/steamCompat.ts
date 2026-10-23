@@ -4,6 +4,8 @@ import {
 } from "./protonPolicy";
 import { readCompatTools } from "./compatTools";
 import { getCompatManagerTools } from "./compatManager";
+import { runGameSettingsMutation } from "./gameSettingsQueue";
+import type { GameTweak } from "../types";
 export {
   defaultWindowsCompatTool,
 } from "./protonPolicy";
@@ -30,15 +32,36 @@ const apps = () => window.SteamClient?.Apps;
 export const USE_DEFAULT_COMPAT = "__armada_default__";
 export const FOLLOW_STEAM_COMPAT = "__steam_default__";
 let windowsCompatTool = "";
+let compatPolicyRevision = 0;
 let windowsCompatDefaults: string[] = [];
 let autoApplyCompat = true;
 const handledAppids = new Set<string>();
+let handledHistoryLoaded: boolean | undefined;
+let finishHandledHistory = () => {};
+const handledHistoryReady = new Promise<void>((resolve) => { finishHandledHistory = resolve; });
+let handledSaveQueue: Promise<void> = Promise.resolve();
+const explicitCompatAppids = new Set<string>();
+type GameCompatProfile = Pick<GameTweak, "enabled" | "steamCompatTool">;
+const gameCompatProfiles = new Map<string, GameCompatProfile>();
+// Keep choices made while the startup configuration is still loading.
+let pendingPolicy: {
+  tool?: string;
+  autoApply?: boolean;
+  replaceGames?: boolean;
+  games: Array<[string, GameCompatProfile | null]>;
+} | null = { games: [] };
 let protonToolsCache: CompatTool[] = [];
 let protonToolsCachedAt = 0;
 let protonToolsRequest: Promise<CompatTool[]> | null = null;
 
 export function setWindowsCompatTool(toolName: string | undefined): void {
   windowsCompatTool = toolName || "";
+  if (pendingPolicy) pendingPolicy.tool = windowsCompatTool;
+  compatPolicyRevision++;
+}
+
+export function getCompatPolicyRevision(): number {
+  return compatPolicyRevision;
 }
 
 // A saved default can name a tool a later release stopped shipping.
@@ -67,10 +90,24 @@ export function configureCompatPolicy(
   autoApply: boolean,
   appids: string[],
   defaults: string[] = [],
+  games: Record<string, GameTweak> = {},
 ): void {
+  const pending = pendingPolicy;
+  pendingPolicy = null;
+  if (pending) {
+    toolName = pending.tool ?? toolName;
+    autoApply = pending.autoApply ?? autoApply;
+    appids = [...appids, ...handledAppids];
+    games = { ...(pending.replaceGames ? {} : games) };
+    for (const [appid, patch] of pending.games) {
+      if (patch) games[appid] = { ...games[appid], ...patch };
+      else delete games[appid];
+    }
+  }
   setWindowsCompatTool(toolName);
   windowsCompatDefaults = defaults.map(String).filter(Boolean);
   autoApplyCompat = autoApply;
+  setGameCompatProfiles(games);
   handledAppids.clear();
   for (const appid of appids) {
     const id = String(appid);
@@ -78,12 +115,61 @@ export function configureCompatPolicy(
   }
 }
 
+export function setGameCompatProfiles(games: Record<string, GameTweak>): void {
+  if (pendingPolicy) {
+    pendingPolicy.replaceGames = true;
+    pendingPolicy.games = [];
+  }
+  explicitCompatAppids.clear();
+  gameCompatProfiles.clear();
+  for (const [appid, game] of Object.entries(games)) {
+    updateGameCompatProfile(appid, { enabled: game.enabled, steamCompatTool: game.steamCompatTool });
+  }
+}
+
+export function updateGameCompatProfile(appid: string, patch: GameCompatProfile | null): void {
+  pendingPolicy?.games.push([appid, patch ? { ...patch } : null]);
+  if (!patch) {
+    gameCompatProfiles.delete(appid);
+    explicitCompatAppids.delete(appid);
+    return;
+  }
+  const game = { ...gameCompatProfiles.get(appid), ...patch };
+  gameCompatProfiles.set(appid, game);
+  if (game.enabled !== false && game.steamCompatTool && game.steamCompatTool !== USE_DEFAULT_COMPAT) {
+    explicitCompatAppids.add(appid);
+  } else {
+    explicitCompatAppids.delete(appid);
+  }
+}
+
 export function setAutoApplyCompat(enabled: boolean): void {
   autoApplyCompat = enabled;
+  if (pendingPolicy) pendingPolicy.autoApply = enabled;
 }
 
 export function handledGameAppids(): string[] {
   return Array.from(handledAppids).sort((a, b) => Number(a) - Number(b));
+}
+
+export function initializeHandledGames(appids: string[] | null): void {
+  if (handledHistoryLoaded !== undefined) return;
+  handledHistoryLoaded = appids !== null;
+  for (const appid of appids || []) {
+    const id = String(appid);
+    if (/^\d+$/.test(id)) handledAppids.add(id);
+  }
+  finishHandledHistory();
+}
+
+export function persistHandledGames(save: (appids: string[]) => Promise<unknown>): Promise<void> {
+  const request = handledSaveQueue.then(async () => {
+    // An early edit must not replace history that has not loaded yet.
+    await handledHistoryReady;
+    if (handledHistoryLoaded) await save(handledGameAppids());
+  });
+  handledSaveQueue = request.catch(() => {});
+  return request;
 }
 
 export function markCompatHandled(appid: string): boolean {
@@ -370,7 +456,7 @@ async function applyWindowsCompatDefault(appid: string): Promise<boolean> {
   if (handledAppids.has(appid)) return true;
   const details = await resolveSettledCompatDetails(appid);
   if (!details) return false;
-  if (!autoApplyCompat || windowsCompatTool === FOLLOW_STEAM_COMPAT || Number(details.nCompatToolPriority || 0) >= 250) {
+  if (!autoApplyCompat || handledHistoryLoaded === false || windowsCompatTool === FOLLOW_STEAM_COMPAT || Number(details.nCompatToolPriority || 0) >= 250) {
     markCompatHandled(appid);
     return true;
   }
@@ -379,10 +465,13 @@ async function applyWindowsCompatDefault(appid: string): Promise<boolean> {
 }
 
 async function applyGamePolicy(appid: string, nonSteam = false): Promise<boolean> {
-  const wrapped = await applyLaunchWrapperToGame(appid, nonSteam);
-  if (nonSteam) return wrapped;
-  const compat = await applyWindowsCompatDefault(appid);
-  return wrapped && compat;
+  if (await resolveOverviewType(appid) === null || !(await resolveDetails(appid))) return false;
+  return runGameSettingsMutation(async () => {
+    const wrapped = await applyLaunchWrapperToGame(appid, nonSteam);
+    if (nonSteam || explicitCompatAppids.has(appid)) return wrapped;
+    const compat = await applyWindowsCompatDefault(appid);
+    return wrapped && compat;
+  });
 }
 
 async function applyGamePolicyWithRetries(appid: string, onHandledChange: () => void): Promise<void> {
@@ -414,6 +503,7 @@ export async function migrateWindowsCompatTool(
   const worker = async () => {
     while (next < appids.length) {
       const appid = appids[next++];
+      if (explicitCompatAppids.has(appid)) continue;
       if (pinned && !pinned.has(appid)) continue;
       const type = await resolveOverviewType(appid);
       if (!isManagedType(type)) continue;
@@ -440,13 +530,16 @@ export async function migrateWindowsCompatTool(
   await Promise.all(Array.from({ length: Math.min(10, appids.length) }, worker));
 }
 
-export async function resetCompatToolToDefault(appid: string, pinnedAppids?: string[] | null): Promise<string> {
+export async function resetCompatToolToDefault(appid: string, pinnedAppids?: string[] | null, requireApplied = false): Promise<string> {
   const type = await resolveOverviewType(appid);
   if (type === STEAM_SHORTCUT_APP_TYPE) {
     await specifyCompatTool(appid, "");
     return "";
   }
-  if (!isManagedType(type)) return "";
+  if (!isManagedType(type)) {
+    if (requireApplied) throw new Error("Steam game details are unavailable");
+    return "";
+  }
   const tool = await effectiveWindowsCompatTool();
   if (tool === FOLLOW_STEAM_COMPAT) {
     await specifyCompatTool(appid, "");
@@ -455,26 +548,42 @@ export async function resetCompatToolToDefault(appid: string, pinnedAppids?: str
   }
   // Clearing first needs a default to put back and a known pin state; null is unknown.
   if (!tool || pinnedAppids === null) {
+    if (requireApplied) throw new Error("Steam compatibility settings are unavailable");
     const state = await resolveCompatState(appid);
     return state && state.priority >= 250 ? state.tool : "";
   }
   // A dangling pin reads as unset, so clearing it first would route the game as Linux.
-  if (pinnedAppids?.includes(appid)) return (await repinToTool(appid, tool)) ? tool : "";
+  if (pinnedAppids?.includes(appid)) {
+    const applied = await repinToTool(appid, tool);
+    if (!applied && requireApplied) throw new Error("Could not apply the global compatibility tool");
+    return applied ? tool : "";
+  }
   const route = await clearCompatToolAndResolveRoute(appid);
   const applied = await applyCompatDefaultForRoute(appid, route);
+  if (!applied && requireApplied) throw new Error("Could not apply the global compatibility tool");
   return applied && route === "windows" ? tool : "";
 }
 
-export async function resetAllGamePolicies(appids: string[], pinnedAppids?: string[] | null): Promise<void> {
+export async function resetAllGamePolicies(appids: string[], pinnedAppids?: string[] | null, requireApplied = false): Promise<void> {
   await getProtonTools(true);
   const tool = await effectiveWindowsCompatTool();
   // null pin state is unknown, so leave mappings alone rather than risk stranding one.
   const canResetCompat = Boolean(tool) && pinnedAppids !== null;
   const pinned = pinnedAppids ? new Set(pinnedAppids.map(String)) : null;
   let next = 0;
+  const failures: string[] = [];
   const worker = async () => {
     while (next < appids.length) {
       const appid = appids[next++];
+      if (requireApplied) {
+        try {
+          await resetCompatToolToDefault(appid, pinnedAppids, true);
+          if (!(await resetLaunchOptionsForGame(appid))) throw new Error("Could not reset Steam launch options");
+        } catch (error) {
+          failures.push(`${appid}: ${String(error)}`);
+        }
+        continue;
+      }
       const type = await resolveOverviewType(appid);
       if (type === STEAM_SHORTCUT_APP_TYPE) {
         try {
@@ -495,6 +604,7 @@ export async function resetAllGamePolicies(appids: string[], pinnedAppids?: stri
     }
   };
   await Promise.all(Array.from({ length: Math.min(10, appids.length) }, worker));
+  if (failures.length) throw new Error(failures.join("\n"));
 }
 
 // Unknown app_type (overview not loaded yet) is treated as a game so a real game is never hidden.

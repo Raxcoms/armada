@@ -38,6 +38,30 @@ for (const locale of ["zh-CN", "pt-BR", "pt-PT"]) {
   assert.deepEqual(Object.keys(localeStrings[locale]), Object.keys(localeStrings.en));
 }
 
+for (const [locale, strings] of Object.entries(localeStrings)) {
+  for (const [key, value] of Object.entries(strings)) {
+    if (/(?:description|notice|instructions|warning)$/i.test(key)) {
+      assert.doesNotMatch(value, /[;；]/, `${locale}: ${key}`);
+    }
+  }
+  const selector = strings["profiles.performanceDescription"];
+  assert.ok(selector.includes("Steam"), locale);
+  assert.ok(selector.includes(strings["options.performance"]), locale);
+  assert.match(selector, /selector|seletor|选择器/, locale);
+  assert.match(selector, /Quick Access|acesso rápido|快速访问/, locale);
+}
+assert.match(localeStrings.en["profiles.performanceDescription"], /profile selector/);
+
+for (const [locale, games, about] of [
+  ["en", "Game Settings", "About"],
+  ["zh-CN", "游戏设置", "关于"],
+  ["pt-BR", "Config. de jogos", "Sobre"],
+  ["pt-PT", "Config. de jogos", "Sobre"],
+]) {
+  assert.equal(translate(locale, "navigation.games"), games);
+  assert.equal(translate(locale, "navigation.about"), about);
+}
+
 assert.equal(localeFromLanguage("english"), "en");
 assert.equal(localeFromLanguage("schinese"), "zh-CN");
 assert.equal(localeFromLanguage("SteamChina_SChinese"), "zh-CN");

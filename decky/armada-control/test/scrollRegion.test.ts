@@ -198,4 +198,3 @@ test("cleanup compares the browser's serialized CSS math rather than the assigne
   padding.restore();
   assert.equal(values.has("scroll-padding-top"), false);
 });
-

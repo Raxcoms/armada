@@ -5,33 +5,48 @@ import {
   configureCompatPolicy,
   defaultWindowsCompatTool,
   getProtonTools,
-  handledGameAppids,
+  getCompatPolicyRevision,
+  initializeHandledGames,
   migrateWindowsCompatTool,
+  persistHandledGames as persistCompatHandledGames,
   registerDownloadWatcher,
   sweepInstalledGames,
 } from "./lib/steamCompat";
 import { factoryDefaultTransition } from "./lib/protonPolicy";
+import { runGameSettingsMutation } from "./lib/gameSettingsQueue";
 
 export default definePlugin(() => {
   let unregisterDownloadWatcher = () => {};
   const persistHandledGames = () => {
-    saveCompatApplied(handledGameAppids()).catch(() => {});
+    persistCompatHandledGames(saveCompatApplied).catch(() => {});
   };
   let cancelled = false;
+  const startupPolicyRevision = getCompatPolicyRevision();
   const handledRequest = getCompatApplied()
-    .then((state) => ({ state, loaded: true }))
-    .catch(() => ({ state: { appids: [] as string[], protonDefault: "" }, loaded: false }));
+    .then((state) => {
+      initializeHandledGames(state.appids);
+      return { state, loaded: true };
+    })
+    .catch(() => {
+      initializeHandledGames(null);
+      return { state: { appids: [] as string[], protonDefault: "" }, loaded: false };
+    });
   Promise.all([getConfig(), getInstalledGames(), handledRequest])
     .then(async ([config, games, handled]) => {
       await (window as any).App.WaitForServicesInitialized();
       if (cancelled) return;
       const explicitTool = config.tweaks?.global?.windowsCompatTool;
+      const startupPolicyUnchanged = getCompatPolicyRevision() === startupPolicyRevision;
       configureCompatPolicy(
         explicitTool,
         handled.loaded && config.tweaks?.global?.autoApplyCompat !== false,
-        handled.state.appids,
+        [...handled.state.appids, ...Object.entries(config.tweaks.games)
+          .filter(([, game]) => game.enabled !== false && !!game.steamCompatTool)
+          .map(([appid]) => appid)],
         config.protonDefaults,
+        config.tweaks.games,
       );
+      const initialPolicyRevision = getCompatPolicyRevision();
       const persist = handled.loaded ? persistHandledGames : () => {};
       unregisterDownloadWatcher = registerDownloadWatcher(persist);
       window.setTimeout(() => {
@@ -39,7 +54,7 @@ export default definePlugin(() => {
           if (cancelled) return;
           await sweepInstalledGames(games);
           if (cancelled) return;
-          if (handled.loaded && !explicitTool) {
+          if (handled.loaded && !explicitTool && startupPolicyUnchanged) {
             const tools = await getProtonTools();
             if (cancelled) return;
             const nextTool = defaultWindowsCompatTool(tools, config.protonDefaults);
@@ -48,16 +63,20 @@ export default definePlugin(() => {
             );
             if (transition) {
               try {
-                if (transition.oldTool !== transition.newTool) {
-                  await migrateWindowsCompatTool(
-                    games.filter((game) => !game.nonSteam).map((game) => game.appid),
-                    transition.oldTool,
-                    transition.newTool,
-                  );
-                }
-                if (cancelled) return;
-                await saveCompatApplied(handledGameAppids(), transition.newTool);
-                return;
+                const applied = await runGameSettingsMutation(async () => {
+                  if (cancelled || getCompatPolicyRevision() !== initialPolicyRevision) return false;
+                  if (transition.oldTool !== transition.newTool) {
+                    await migrateWindowsCompatTool(
+                      games.filter((game) => !game.nonSteam).map((game) => game.appid),
+                      transition.oldTool,
+                      transition.newTool,
+                    );
+                  }
+                  if (cancelled) return false;
+                  await persistCompatHandledGames((appids) => saveCompatApplied(appids, transition.newTool));
+                  return true;
+                });
+                if (applied) return;
               } catch (error) {
               }
             }
