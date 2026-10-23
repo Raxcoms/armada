@@ -1,3 +1,4 @@
+import json
 import os
 import shlex
 import subprocess
@@ -197,6 +198,48 @@ def get_sleep_logs_enabled():
         except (RuntimeError, OSError):
             pass
     return enabled
+
+
+def sleep_log_directory():
+    result = run_cmd([
+        "busctl", "--json=short", "get-property", "org.freedesktop.systemd1",
+        "/org/freedesktop/systemd1/unit/systemd_2dsuspend_2eservice",
+        "org.freedesktop.systemd1.Service", "Environment", "EnvironmentFiles",
+        "PassEnvironment", "UnsetEnvironment",
+    ])
+    if result is None or result.returncode:
+        return None
+    try:
+        environment, files, passed, unset = [json.loads(line)["data"] for line in result.stdout.splitlines()]
+        # Let systemd own environment-file parsing; don't show a guessed path.
+        if files:
+            return None
+        values = {}
+        if "ARMADA_SLEEP_DEBUG_REPORT_DIR" in passed:
+            manager = run_cmd(["busctl", "--json=short", "get-property", "org.freedesktop.systemd1",
+                               "/org/freedesktop/systemd1", "org.freedesktop.systemd1.Manager", "Environment"])
+            if manager is None or manager.returncode:
+                return None
+            values.update(entry.split("=", 1) for entry in json.loads(manager.stdout)["data"])
+        values.update(entry.split("=", 1) for entry in environment)
+        name = "ARMADA_SLEEP_DEBUG_REPORT_DIR"
+        for entry in unset:
+            key, separator, value = entry.partition("=")
+            if not separator or values.get(key) == value:
+                values.pop(key, None)
+        env = clean_env()
+        env.pop(name, None)
+        if name in values:
+            env[name] = values[name]
+        directory = subprocess.run(["/usr/bin/bash", str(SLEEP_LOG_HOOK_SOURCE), "report-directory"],
+                                   capture_output=True, text=True, check=True, timeout=5, env=env).stdout.strip()
+        return directory if Path(directory).is_absolute() else None
+    except (KeyError, TypeError, ValueError, OSError, subprocess.SubprocessError):
+        return None
+
+
+def get_sleep_logs_status():
+    return {"enabled": get_sleep_logs_enabled(), "directory": sleep_log_directory()}
 
 
 def set_sleep_logs_enabled(enabled):

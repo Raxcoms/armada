@@ -4,6 +4,7 @@ import json
 import struct
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .privileged import call
@@ -655,9 +656,24 @@ def calibration_from_capture(capture, current=None, stick_deadzone=0, inverted=(
     return params
 
 
+def calibrated_at():
+    try:
+        params = json.loads(INPUT_CALIBRATION_CONFIG.read_text(encoding="utf-8"))
+        value = params.get("calibratedAt") if isinstance(params, dict) else None
+        if not isinstance(value, str):
+            return None
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if timestamp.tzinfo is None:
+            return None
+        return timestamp.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    except (OSError, ValueError):
+        return None
+
+
 def calibration_status():
     state = controller_state()
     state["saved"] = INPUT_CALIBRATION_CONFIG.exists()
+    state["calibratedAt"] = calibrated_at()
     backend = state.get("backend") if state.get("canApply") else None
     state["params"] = read_calibration_params(backend) if backend else {}
     if state.get("supported") and not state.get("canApply"):
@@ -694,6 +710,7 @@ def save_calibration():
     params = calibration_from_capture(capture, current, stick_deadzone, inverted_axes(event, backend))
     params["backend"] = backend
     params["version"] = CALIBRATION_VERSION
+    params["calibratedAt"] = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     call("write_config", name="calibration", text=json.dumps(params, indent=2, sort_keys=True) + "\n")
     _ranges_stale = True
     _recording = None

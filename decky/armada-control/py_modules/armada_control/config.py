@@ -1,3 +1,4 @@
+from .calibration import calibrated_at
 from .controller import CONTROLLER_TYPES, controller_type, inputplumber_targets
 from .power import factory_power_defaults, parse_power
 from .rgb import rgb_supported
@@ -65,6 +66,7 @@ def build_config(include_games=True):
         "sleepMode": env.get("ARMADA_SUSPEND_MODE", "s2idle"),
         "sleepModes": sleep_modes(),
         "controllerType": controller_type(),
+        "calibratedAt": calibrated_at(),
         "controllerTypes": [
             {"data": key, "label": CONTROLLER_TYPES[key]} for key in inputplumber_targets(env)
         ],

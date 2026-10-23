@@ -20,6 +20,7 @@ from armada_control.system import (
     set_bottom_screen_brightness,
     set_bottom_screen_enabled,
     get_sleep_logs_enabled,
+    get_sleep_logs_status,
     set_mtp_enabled,
     set_desktop_mode,
     set_sleep_mode,
@@ -83,6 +84,9 @@ class Plugin:
 
     async def get_sleep_logs_enabled(self):
         return await asyncio.to_thread(get_sleep_logs_enabled)
+
+    async def get_sleep_logs_status(self):
+        return await asyncio.to_thread(get_sleep_logs_status)
 
     async def set_sleep_logs_enabled(self, enabled):
         return await asyncio.to_thread(set_sleep_logs_enabled, enabled)
