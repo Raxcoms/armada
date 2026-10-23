@@ -1,17 +1,19 @@
-import { Field, PanelSection, Tabs } from "@decky/ui";
+import { Field, PanelSection } from "@decky/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { getConfig, getInstalledGames, saveTweaks } from "./backend";
 import { RgbLighting } from "./components/RgbLighting";
+import { TabNavigation } from "./components/TabNavigation";
 import { useDebouncedSave } from "./hooks/useDebouncedSave";
 import { useLocale } from "./hooks/useLocale";
 import { t } from "./i18n";
 import { tabIcons } from "./icons";
 import { currentGame } from "./lib/games";
-import { styles } from "./styles";
+import { ArmadaStyles } from "./components/ArmadaStyles";
 import { Compatibility } from "./tabs/Compatibility";
 import { Profiles } from "./tabs/Profiles";
-import { Settings } from "./tabs/Settings";
+import { Controller } from "./tabs/Controller";
+import { Experimental } from "./tabs/Experimental";
+import { About } from "./tabs/About";
 import type { Config } from "./types";
 
 export function Content() {
@@ -25,9 +27,12 @@ export function Content() {
     try {
       const next = await getConfig();
       next.game = currentGame();
-      next.selectedGame = next.game || null;
       savedTweaksSnapshot.current = JSON.stringify(next.tweaks);
-      setConfig((current) => ({ ...next, installedGames: current?.installedGames || next.installedGames }));
+      setConfig((current) => ({
+        ...next,
+        selectedGame: current?.selectedGame,
+        installedGames: current?.installedGames || next.installedGames,
+      }));
     } catch (error) {
       setMessage(String(error));
     }
@@ -76,25 +81,24 @@ export function Content() {
     };
   }, [!!config]);
   useDebouncedSave({ config, field: "tweaks", snapshot: savedTweaksSnapshot, save: saveTweaks, setConfig, onError: load });
-  if (!config) return <PanelSection title="Armada Control"><Field label={message === "Loading" ? t("common.loading") : message} /></PanelSection>;
-  const tabContent = (content: ReactNode) => (
-    <div className="armada-control-tab-content">{content}</div>
-  );
+  if (!config) return <PanelSection title="Armada Control"><Field label={message === "Loading" ? t("common.loading") : message} bottomSeparator="none" /></PanelSection>;
   return (
-    <div className="armada-control-tabs">
-      <style>{styles}</style>
-      <Tabs
+    <>
+      <ArmadaStyles />
+      <TabNavigation
         activeTab={tab}
         onShowTab={setTab}
         tabs={[
-          { id: "Compatibility", title: tabIcons.Compatibility, content: tabContent(<Compatibility config={config} setConfig={setConfig} />) },
-          { id: "Profiles", title: tabIcons.Power, content: tabContent(<Profiles config={config} setConfig={setConfig} />) },
+          { id: "Compatibility", title: t("navigation.games"), icon: tabIcons.Compatibility, content: <Compatibility config={config} setConfig={setConfig} /> },
+          { id: "Profiles", title: t("navigation.profiles"), icon: tabIcons.Power, content: <Profiles config={config} setConfig={setConfig} /> },
           ...(config.rgbSupported ? [
-            { id: "RGB", title: tabIcons.RGB, content: tabContent(<RgbLighting />) },
+            { id: "RGB", title: t("navigation.rgb"), icon: tabIcons.RGB, content: <RgbLighting /> },
           ] : []),
-          { id: "Advanced", title: tabIcons.Advanced, content: tabContent(<Settings config={config} setConfig={setConfig} />) },
+          { id: "Controller", title: t("navigation.controller"), icon: tabIcons.Controller, content: <Controller config={config} setConfig={setConfig} /> },
+          { id: "Experimental", title: t("navigation.experimental"), icon: tabIcons.Experimental, content: <Experimental config={config} setConfig={setConfig} /> },
+          { id: "About", title: t("navigation.about"), icon: tabIcons.About, content: <About config={config} /> },
         ]}
       />
-    </div>
+    </>
   );
 }
