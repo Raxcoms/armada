@@ -5,6 +5,8 @@ import time
 from pathlib import Path
 
 from .privileged import call
+from .fan_curves import _parse_fan_curves, normalize_curve_reference, validate_curve_string
+from .power_config import POWER_CONFIG_LOCK
 
 POWER_CONFIG = Path("/etc/armada/power-profiles.conf")
 FACTORY_POWER_CONFIG = Path("/usr/share/armada/power-profiles.conf")
@@ -28,18 +30,19 @@ def restore_factory_power_config(reason):
 
 
 def parse_power(path=None, repair=True):
-    parser = configparser.ConfigParser()
-    paths = [path] if path is not None else [FACTORY_POWER_CONFIG, POWER_CONFIG]
-    try:
-        if not parser.read([candidate for candidate in paths if candidate.exists()]):
-            raise FileNotFoundError(path or FACTORY_POWER_CONFIG)
-        return parsed_power(parser)
-    except (configparser.Error, FileNotFoundError, ValueError) as exc:
-        # Avoid factory-restore on IO errors or code bugs in the read path.
-        if path is None and repair:
-            restore_factory_power_config(exc)
-            return parse_power(FACTORY_POWER_CONFIG, repair=False)
-        raise
+    with POWER_CONFIG_LOCK:
+        parser = configparser.ConfigParser()
+        paths = [path] if path is not None else [FACTORY_POWER_CONFIG, POWER_CONFIG]
+        try:
+            if not parser.read([candidate for candidate in paths if candidate.exists()]):
+                raise FileNotFoundError(path or FACTORY_POWER_CONFIG)
+            return parsed_power(parser)
+        except (configparser.Error, FileNotFoundError, ValueError) as exc:
+            # Avoid factory-restore on IO errors or code bugs in the read path.
+            if path is None and repair:
+                restore_factory_power_config(exc)
+                return parse_power(FACTORY_POWER_CONFIG, repair=False)
+            raise
 
 
 def parsed_power(parser):
@@ -49,7 +52,7 @@ def parsed_power(parser):
     data = {
         "general": {"default_profile": parser.get("general", "default_profile")},
         "profiles": {},
-        "fan_curves": {},
+        "fan_curves": _parse_fan_curves(parser),
         "fan": {},
         "underclocks": {},
     }
@@ -64,16 +67,9 @@ def parsed_power(parser):
             "cpu_underclock": parser.get(section, "cpu_underclock"),
             "gpu_max": parser.get(section, "gpu_max"),
             "gpu_min": parser.get(section, "gpu_min"),
-            "fan_curve": parser.get(section, "fan_curve"),
+            "fan_curve": normalize_curve_reference(parser.get(section, "fan_curve")),
         }
     for section in parser.sections():
-        if section.startswith("fan_curve."):
-            name = section.split(".", 1)[1]
-            data["fan_curves"][name] = {
-                "label": parser.get(section, "label", fallback="") or default_label(name),
-                "curve": parser.get(section, "curve"),
-            }
-            continue
         if not section.startswith("underclock."):
             continue
         parts = section.split(".")
@@ -93,6 +89,8 @@ def profile_overrides(profile):
     out = {}
     for key in EDITABLE_KEYS:
         value = profile[key]
+        if key == "fan_curve":
+            value = normalize_curve_reference(value)
         out[key] = f"{float(value):.2f}" if key in NUMERIC_KEYS else str(value)
     return out
 
@@ -143,8 +141,14 @@ def save_power_config(data):
     data["general"]["default_profile"] = data["general"].get("default_profile", "")
     if data["general"]["default_profile"] not in PROFILES:
         raise ValueError("invalid power config")
-    try:
-        rendered = render_power(data, factory_power_defaults())
-    except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError(f"malformed power config: {exc}")
-    call("write_config", name="power", text=rendered)
+    with POWER_CONFIG_LOCK:
+        try:
+            curves = parse_power()["fan_curves"]
+            for profile in data["profiles"].values():
+                reference = normalize_curve_reference(profile["fan_curve"])
+                if reference not in curves:
+                    validate_curve_string(reference)
+            rendered = render_power(data, factory_power_defaults())
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"malformed power config: {exc}")
+        call("write_config", name="power", text=rendered)

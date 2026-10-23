@@ -131,8 +131,8 @@ class Plugin:
     async def get_fans_state(self):
         return await asyncio.to_thread(get_fans_state)
 
-    async def save_fan_curves(self, fan_curves, fan_settings):
-        return await asyncio.to_thread(save_fan_curves, fan_curves, fan_settings)
+    async def save_fan_curves(self, fan_curves, deleted=None):
+        return await asyncio.to_thread(save_fan_curves, fan_curves, deleted)
 
     async def set_charging_fan_pwm(self, pwm):
         return await asyncio.to_thread(save_charging_pwm, pwm)
