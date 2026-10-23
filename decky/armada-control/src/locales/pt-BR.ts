@@ -2,6 +2,8 @@ import type { TranslationKey } from "./en";
 
 export const ptBR = {
   "common.loading": "Carregando",
+  "common.loadingSettings": "Carregando configurações",
+  "common.loadError": "Não foi possível carregar as configurações",
   "common.information": "Informações",
   "calibration.leftTrigger": "Gatilho esquerdo",
   "calibration.rightTrigger": "Gatilho direito",

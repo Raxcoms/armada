@@ -2,6 +2,8 @@ import type { TranslationKey } from "./en";
 
 export const ptPT = {
   "common.loading": "A carregar",
+  "common.loadingSettings": "A carregar definições",
+  "common.loadError": "Não foi possível carregar as definições",
   "common.information": "Informações",
   "calibration.leftTrigger": "Gatilho esquerdo",
   "calibration.rightTrigger": "Gatilho direito",

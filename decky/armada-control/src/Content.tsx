@@ -1,4 +1,4 @@
-import { Field, PanelSection } from "@decky/ui";
+import { PanelSection } from "@decky/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getConfig, getInstalledGames, saveTweaks } from "./backend";
 import { RgbLighting } from "./components/RgbLighting";
@@ -9,6 +9,8 @@ import { t } from "./i18n";
 import { tabIcons } from "./icons";
 import { currentGame } from "./lib/games";
 import { ArmadaStyles } from "./components/ArmadaStyles";
+import { LoadingState } from "./components/LoadingState";
+import { ButtonRow, SupportingText } from "./components/widgets";
 import { Compatibility } from "./tabs/Compatibility";
 import { Profiles } from "./tabs/Profiles";
 import { Controller } from "./tabs/Controller";
@@ -20,12 +22,18 @@ export function Content() {
   useLocale();
   const [tab, setTab] = useState("Compatibility");
   const [config, setConfig] = useState<Config | null>(null);
-  const [message, setMessage] = useState("Loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
   const savedTweaksSnapshot = useRef("");
   const installedGamesRequested = useRef(false);
+  const mounted = useRef(true);
+  const loadRequest = useRef(0);
   const load = useCallback(async () => {
+    if (!mounted.current) return;
+    const request = ++loadRequest.current;
+    setLoadError(null);
     try {
       const next = await getConfig();
+      if (!mounted.current || request !== loadRequest.current) return;
       next.game = currentGame();
       savedTweaksSnapshot.current = JSON.stringify(next.tweaks);
       setConfig((current) => ({
@@ -34,11 +42,16 @@ export function Content() {
         installedGames: current?.installedGames || next.installedGames,
       }));
     } catch (error) {
-      setMessage(String(error));
+      if (mounted.current && request === loadRequest.current) setLoadError(String(error));
     }
   }, []);
   useEffect(() => {
-    load();
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      loadRequest.current++;
+    };
   }, [load]);
   useEffect(() => {
     if (!config || installedGamesRequested.current) return;
@@ -81,7 +94,15 @@ export function Content() {
     };
   }, [!!config]);
   useDebouncedSave({ config, field: "tweaks", snapshot: savedTweaksSnapshot, save: saveTweaks, setConfig, onError: load });
-  if (!config) return <PanelSection title="Armada Control"><Field label={message === "Loading" ? t("common.loading") : message} bottomSeparator="none" /></PanelSection>;
+  if (!config) return <div className="armada-control-startup">
+    <ArmadaStyles />
+    {loadError !== null ? <PanelSection>
+      <div role="alert">
+        <SupportingText className="armada-note-error">{t("common.loadError")}: {loadError}</SupportingText>
+      </div>
+      <ButtonRow layout="below" onClick={() => { void load(); }}>{t("common.retry")}</ButtonRow>
+    </PanelSection> : <LoadingState label={t("common.loadingSettings")} />}
+  </div>;
   return (
     <>
       <ArmadaStyles />

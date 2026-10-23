@@ -23,10 +23,12 @@ const descriptionStyles = classMap
   .filter((classes) => classes.FieldDescription)
   .map((classes) => `
       .armada-control-tabs .${classes.FieldDescription},
+      .armada-control-startup .${classes.FieldDescription},
       .armada-control-dialog .${classes.FieldDescription} {
         color: ${theme.supportingText};
       }
       .armada-control-tabs .armada-note-error .${classes.FieldDescription},
+      .armada-control-startup .armada-note-error .${classes.FieldDescription},
       .armada-control-dialog .armada-note-error .${classes.FieldDescription} {
         color: ${theme.error};
       }
@@ -61,6 +63,24 @@ export const styles = `
       ${disabledButton}:is(.gpfocus, :focus-visible) {
         outline: ${theme.focusRingWidth} solid ${theme.disabledText};
         outline-offset: calc(-1 * ${theme.focusRingWidth});
+      }
+      .armada-loading-state {
+        display: grid;
+        justify-items: center;
+        gap: ${theme.spaceMedium};
+        padding-block: ${theme.spaceLarge};
+        text-align: center;
+      }
+      .armada-loading-spinner {
+        display: block;
+        inline-size: ${theme.loadingIndicatorSize};
+        block-size: ${theme.loadingIndicatorSize};
+      }
+      .armada-loading-state .armada-supporting-text {
+        text-align: center;
+      }
+      .armada-control-startup .armada-note-error {
+        color: ${theme.error};
       }
       .armada-control-tabs {
         box-sizing: border-box;

@@ -2,6 +2,8 @@ import type { TranslationKey } from "./en";
 
 export const zhCN = {
   "common.loading": "正在加载",
+  "common.loadingSettings": "正在加载设置",
+  "common.loadError": "无法加载设置",
   "common.information": "信息",
   "calibration.leftTrigger": "左扳机",
   "calibration.rightTrigger": "右扳机",

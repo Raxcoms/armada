@@ -1,5 +1,7 @@
 export const en = {
   "common.loading": "Loading",
+  "common.loadingSettings": "Loading settings",
+  "common.loadError": "Could not load settings",
   "common.information": "Information",
   "calibration.leftTrigger": "Left trigger",
   "calibration.rightTrigger": "Right trigger",
