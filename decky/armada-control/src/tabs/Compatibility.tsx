@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { getCompatMappedAppids, reapplyPerf, restartGameMode, saveCompatApplied, saveTweaks } from "../backend";
 import { ButtonRow, ControlRow, NoticeSection, SectionDescription, SelectEdit, SliderEdit, SupportingText, ToggleRow } from "../components/widgets";
-import { ArmadaDialogFooter, ArmadaModalRoot } from "../components/ArmadaModalRoot";
+import { ArmadaDialogFooter, ArmadaDialogHeader, ArmadaModalRoot } from "../components/ArmadaModalRoot";
 import { getCurrentLocale, t, translateLabel } from "../i18n";
 import { findPreset, localized, resolveEnvValues } from "../lib/envPresets";
 import { getGlobalResolution, setGlobalResolution } from "../lib/steamSettings";
@@ -97,6 +97,7 @@ function ConfirmResetAllModal({ closeModal, onConfirm }: { closeModal?: () => vo
   };
   return (
     <ArmadaModalRoot onCancel={closeModal}>
+      <ArmadaDialogHeader>{t("compatibility.resetAllGames")}</ArmadaDialogHeader>
       <DialogBody>
         {t("compatibility.resetAllDescription")}
       </DialogBody>
@@ -123,6 +124,7 @@ function ConfirmResetGameModal({
   };
   return (
     <ArmadaModalRoot onCancel={closeModal}>
+      <ArmadaDialogHeader>{t("compatibility.resetGame")}</ArmadaDialogHeader>
       <DialogBody>
         {t("compatibility.resetGameDescription", { game: gameName })}
       </DialogBody>
@@ -147,6 +149,7 @@ function ConfirmGameModeRestartModal({
   };
   return (
     <ArmadaModalRoot onCancel={closeModal}>
+      <ArmadaDialogHeader>{t("compatibility.restartGameMode")}</ArmadaDialogHeader>
       <DialogBody>
         {t("compatibility.restartGameModeDescription")}
       </DialogBody>
@@ -202,6 +205,7 @@ function EnvVarModal({
   };
   return (
     <ArmadaModalRoot onCancel={closeModal}>
+      <ArmadaDialogHeader>{t("compatibility.environment")}</ArmadaDialogHeader>
       <DialogBody>
         <DialogControlsSection>
           {fromPresets ? (

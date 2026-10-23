@@ -1,4 +1,4 @@
-import { ConfirmModal, DialogBody, DialogButton, showModal } from "@decky/ui";
+import { DialogBody, DialogButton, showModal } from "@decky/ui";
 import { useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { saveFanCurves } from "../backend";
@@ -9,7 +9,7 @@ import { parseCurve } from "../lib/fanCurve";
 import { resolveFanCurve } from "../lib/profileDraft";
 import { clone, titleCase } from "../lib/util";
 import type { CurvesState, FanCurve } from "../types";
-import { ArmadaDialogFooter, ArmadaDialogHeader, ArmadaModalRoot } from "./ArmadaModalRoot";
+import { ArmadaConfirmModal, ArmadaDialogFooter, ArmadaDialogHeader, ArmadaModalRoot } from "./ArmadaModalRoot";
 import { FanCurveEditor } from "./FanCurveEditor";
 import { SupportingText } from "./widgets";
 
@@ -57,12 +57,12 @@ export function FanCurveEditorModal({ initial, curveId, createdCurve, onSaved, c
       busy.current = false;
     }
   };
-  const confirmDelete = () => showModal(<ConfirmModal
-    strTitle={t("fanCurve.delete")}
-    strDescription={t("profiles.deleteDescription", { profile: label })}
-    strOKButtonText={t("common.delete")}
-    strCancelButtonText={t("common.cancel")}
-    onOK={() => { void persist(true); }}
+  const confirmDelete = () => showModal(<ArmadaConfirmModal
+    title={t("fanCurve.delete")}
+    description={t("profiles.deleteDescription", { profile: label })}
+    confirmText={t("common.delete")}
+    cancelText={t("common.cancel")}
+    onConfirm={() => { void persist(true); }}
   />);
 
   return <ArmadaModalRoot bAllowFullSize bDisableBackgroundDismiss={saving} bCancelDisabled={saving} onCancel={cancel}>

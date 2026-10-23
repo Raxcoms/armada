@@ -49,7 +49,7 @@ function setup() {
   let slots: any[];
   let cursor = 0;
   let pendingEffects: Array<() => void> = [];
-  const componentNames = ["ConfirmModal", "DialogBody", "DialogButton", "DialogControlsSection", "DialogControlsSectionHeader", "DialogFooter", "DialogHeader", "Dropdown", "Field", "Focusable", "PanelSection", "SliderField", "TextField", "ToggleField"];
+  const componentNames = ["DialogBody", "DialogButton", "DialogControlsSection", "DialogControlsSectionHeader", "DialogFooter", "DialogHeader", "Dropdown", "Field", "Focusable", "PanelSection", "SliderField", "TextField", "ToggleField"];
   const element = (type: Element["type"], props: any, key?: string): Element => ({ type, props, key });
   const react = {
     useState: (initial: any) => {
@@ -129,7 +129,7 @@ function setup() {
         if (id === "../hooks/useCurrentTemp") return { useCurrentTemp: () => 55 };
         if (id === "../hooks/useDebouncedApply") return { useDebouncedApply: () => () => {} };
         if (id.endsWith("/widgets")) return Object.fromEntries(["ButtonRow", "SectionDescription", "SliderEdit"].map((name) => [name, name]));
-        if (id.endsWith("/ArmadaModalRoot")) return { ArmadaModalRoot: "ArmadaModalRoot", ArmadaDialogHeader: "ArmadaDialogHeader", ArmadaDialogFooter: "ArmadaDialogFooter" };
+        if (id.endsWith("/ArmadaModalRoot")) return { ArmadaModalRoot: "ArmadaModalRoot", ArmadaConfirmModal: "ArmadaConfirmModal", ArmadaDialogHeader: "ArmadaDialogHeader", ArmadaDialogFooter: "ArmadaDialogFooter" };
         if (id === "./AnimatedCollapse") return { AnimatedCollapse: "AnimatedCollapse" };
         const directory = path.slice(0, path.lastIndexOf("/"));
         const resolved: string[] = [];
@@ -397,8 +397,8 @@ test("custom deletion requires confirmation and assigned profiles stay protected
   app.fan("custom");
   app.control("DialogButton", "fanCurve.delete").onClick();
   assert.equal(app.fanWrites.length, 0);
-  assert.equal(app.modals.at(-1)?.type, "ConfirmModal");
-  app.modals.at(-1)!.props.onOK();
+  assert.equal(app.modals.at(-1)?.type, "ArmadaConfirmModal");
+  app.modals.at(-1)!.props.onConfirm();
   await app.settle();
   assert.deepEqual(app.fanWrites[0], { changes: {}, deleted: ["custom"] });
   const assigned = setup();

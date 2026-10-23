@@ -36,8 +36,8 @@ export function CreateCurveModal({
 
   return (
     <ArmadaModalRoot onCancel={() => closeModal?.()}>
+      <ArmadaDialogHeader>{t("fanCurve.create")}</ArmadaDialogHeader>
       <DialogBody className="afc-scope">
-        <ArmadaDialogHeader>{t("fanCurve.create")}</ArmadaDialogHeader>
         <DialogControlsSection>
           <TextField
             label={t("fanCurve.name")}

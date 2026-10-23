@@ -13,12 +13,11 @@ function setup() {
   }).outputText;
   const exports: any = {};
   const calls: unknown[] = [];
-  const scroller = { scrollTo: (options: unknown) => { calls.push(options); } };
   const element = (type: unknown, props: any) => ({ type, props });
   runInNewContext(compiled, { exports, require: (id: string) => {
-    if (id === "@decky/ui") return { DialogHeader: "DialogHeader", Focusable: "Focusable", ModalRoot: "ModalRoot" };
+    if (id === "@decky/ui") return { classMap: [], DialogHeader: "DialogHeader", Focusable: "Focusable", ModalRoot: "ModalRoot" };
     if (id === "react") return { useRef: () => ({ current: null }) };
-    if (id === "../lib/scrollRegion") return { findScrollParent: () => scroller };
+    if (id === "../lib/modalScroll") return { revealModalStart: (target: unknown) => { if (target) calls.push(target); } };
     if (id === "react/jsx-runtime") return { jsx: element, jsxs: element };
     if (id === "./ArmadaStyles") return { ArmadaStyles: "ArmadaStyles" };
     throw new Error(`Unexpected import: ${id}`);
@@ -52,10 +51,7 @@ test("returning to the title reveals only its owning dialog and cancels old nati
   heading.props.ref.current = {};
   heading.props.onGamepadFocus();
   heading.props.onFocus();
-  assert.deepEqual(calls.map((value) => JSON.parse(JSON.stringify(value))), [
-    { top: 0, behavior: "auto" },
-    { top: 0, behavior: "auto" },
-  ]);
+  assert.deepEqual(calls, [heading.props.ref.current, heading.props.ref.current]);
 });
 
 test("profile and calibration dialogs expose the shared heading before editable content", () => {

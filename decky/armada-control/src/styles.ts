@@ -126,6 +126,9 @@ export const styles = `
         line-height: 1.4;
         color: ${theme.error};
       }
+      .armada-control-dialog-scroll {
+        display: contents;
+      }
       .armada-control-dialog-footer {
         width: 100%;
         min-width: 0;

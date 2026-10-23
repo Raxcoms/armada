@@ -15,9 +15,9 @@ function footer(children: unknown) {
   runInNewContext(compiled, {
     exports,
     require: (id: string) => {
-      if (id === "@decky/ui") return { DialogFooter: "DialogFooter", Focusable: "Focusable" };
+      if (id === "@decky/ui") return { classMap: [], DialogFooter: "DialogFooter", Focusable: "Focusable" };
       if (id === "react") return {};
-      if (id === "../lib/scrollRegion") return {};
+      if (id === "../lib/modalScroll") return {};
       if (id === "./ArmadaStyles") return {};
       if (id === "react/jsx-runtime") return { jsx: (type: unknown, props: any) => ({ type, props }) };
       throw new Error(`Unexpected import ${id}`);
