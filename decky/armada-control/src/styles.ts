@@ -65,19 +65,11 @@ export const styles = `
         outline-offset: calc(-1 * ${theme.focusRingWidth});
       }
       .armada-loading-state {
-        display: grid;
-        justify-items: center;
-        gap: ${theme.spaceMedium};
-        padding-block: ${theme.spaceLarge};
-        text-align: center;
-      }
-      .armada-loading-spinner {
-        display: block;
-        inline-size: ${theme.loadingIndicatorSize};
-        block-size: ${theme.loadingIndicatorSize};
-      }
-      .armada-loading-state .armada-supporting-text {
-        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-block-size: var(--armada-panel-available-height, 100%);
+        min-inline-size: 0;
       }
       .armada-control-startup .armada-note-error {
         color: ${theme.error};
