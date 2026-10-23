@@ -1,78 +1,86 @@
-import { PanelSection } from "@decky/ui";
-import { useState } from "react";
+import { DialogBody, DialogButton, DialogControlsSection, DialogControlsSectionHeader, Dropdown, Field, SliderField } from "@decky/ui";
+import { useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { ButtonRow, SelectEdit, SliderEdit } from "../components/widgets";
+import { savePowerConfig } from "../backend";
+import { ArmadaDialogFooter, ArmadaDialogHeader, ArmadaModalRoot } from "../components/ArmadaModalRoot";
 import { t, translateLabel } from "../i18n";
-import { clone, titleCase, update } from "../lib/util";
+import { updateGpuLimit } from "../lib/profileDraft";
+import { clone, titleCase } from "../lib/util";
 import type { Config, PowerProfile } from "../types";
 
-const underclocks = [
-  { data: "none", label: "None" },
-  { data: "small", label: "Small" },
-  { data: "medium", label: "Medium" },
-  { data: "large", label: "Large" },
-];
+export function PowerProfileEditorModal({ profileId, getLatestConfig, setConfig, onSaved, closeModal }: {
+  profileId: string;
+  getLatestConfig: () => Config;
+  setConfig: Dispatch<SetStateAction<Config | null>>;
+  onSaved: (next: Config) => void;
+  closeModal?: () => void;
+}) {
+  const [initial] = useState(() => clone(getLatestConfig()));
+  const [profile, setProfile] = useState(() => clone(initial.power.profiles[profileId]));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const busy = useRef(false);
+  const dirty = JSON.stringify(profile) !== JSON.stringify(initial.power.profiles[profileId]);
+  const fanCurves = Object.entries(initial.power.fan_curves).map(([data, curve]) => ({ data, label: translateLabel(curve.label || titleCase(data)) }));
+  const supportsUnderclock = !!initial.power.underclocks?.[initial.cpuDeviceClass];
+  const setValue = (key: keyof PowerProfile, value: string) => {
+    if (!busy.current) setProfile((current) => ({ ...current, [key]: value }));
+  };
+  const setGpu = (key: "gpu_min" | "gpu_max", value: number) => {
+    if (!busy.current) setProfile((current) => updateGpuLimit(current, key, (value / 100).toFixed(2)));
+  };
+  const cancel = () => { if (!busy.current) closeModal?.(); };
+  const save = async () => {
+    if (busy.current) return;
+    busy.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      const latest = getLatestConfig();
+      const next = await savePowerConfig({ ...latest.power, profiles: { ...latest.power.profiles, [profileId]: clone(profile) } });
+      setConfig((current) => current ? {
+        ...current,
+        power: { ...current.power, profiles: { ...current.power.profiles, [profileId]: next.power.profiles[profileId] } },
+      } : current);
+      onSaved(next);
+      closeModal?.();
+    } catch (error) {
+      setError(String(error));
+    } finally {
+      busy.current = false;
+      setSaving(false);
+    }
+  };
 
-export function Power({ config, setConfig }: { config: Config; setConfig: Dispatch<SetStateAction<Config | null>> }) {
-  const [profile, setProfile] = useState(config.power.general.default_profile || "balanced");
-  const p = config.power.profiles[profile] || ({} as PowerProfile);
-  const profiles = Object.entries(config.power.profiles || {}).map(([name, profile]) => ({
-    data: name,
-    label: translateLabel(profile.label || titleCase(name)),
-  }));
-  const fanCurves = Object.entries(config.power.fan_curves || {}).map(([name, curve]) => ({
-    data: name,
-    label: translateLabel(curve.label || titleCase(name)),
-  }));
-  const setProfileValue = (name: string, value: any) => {
-    setConfig((current) => (current ? update(current, ["power", "profiles", profile, name], value) : current));
-  };
-  const setGpuValue = (name: string, value: any) => {
-    setConfig((current) => {
-      if (!current) return current;
-      const next = clone(current);
-      const target: any = next.power.profiles[profile];
-      target[name] = value;
-      if (name === "gpu_min" && Number(value) > Number(target.gpu_max || 0)) {
-        target.gpu_max = value;
-      }
-      if (name === "gpu_max" && Number(value) < Number(target.gpu_min || 0)) {
-        target.gpu_min = value;
-      }
-      return next;
-    });
-  };
-  const resetProfile = () => {
-    const defaults = config.powerDefaults?.profiles?.[profile];
-    if (!defaults) return;
-    setConfig((current) => (current ? update(current, ["power", "profiles", profile], defaults) : current));
-  };
-  const underclockLevel = p.cpu_underclock || "";
-  const supportsUnderclockPresets = !!config.power.underclocks?.[config.cpuDeviceClass];
-  return (
-    <>
-      <PanelSection title={t("power.editProfile")}>
-        <SelectEdit value={profile} options={profiles} onChange={setProfile} />
-      </PanelSection>
-      <PanelSection title={t("power.profileSettings")}>
-        <SelectEdit label={t("power.fanCurve")} value={p.fan_curve} options={fanCurves} onChange={(v) => setProfileValue("fan_curve", v)} />
-        {(config.perf?.governors?.length ?? 0) > 0 ? (
-          <SelectEdit
-            label={t("power.cpuGovernor")}
-            value={p.cpu_governor}
-            options={config.perf!.governors.map((g) => ({ data: g, label: translateLabel(titleCase(g)) }))}
-            onChange={(v) => setProfileValue("cpu_governor", v)}
-          />
-        ) : null}
-        {supportsUnderclockPresets ? (
-          <SelectEdit label={t("power.cpuUnderclock")} value={underclockLevel} options={underclocks.map((option) => ({ ...option, label: translateLabel(option.label) }))} onChange={(v) => setProfileValue("cpu_underclock", v)} />
-        ) : (
-          <SliderEdit label={t("power.cpuMax")} value={Math.round(Number(p.cpu_max || 0) * 100)} min={35} max={100} step={1} onChange={(v) => setProfileValue("cpu_max", (v / 100).toFixed(2))} />
-        )}
-        <SliderEdit label={t("power.gpuMin")} value={Math.round(Number(p.gpu_min || 0) * 100)} min={0} max={100} step={1} onChange={(v) => setGpuValue("gpu_min", (v / 100).toFixed(2))} />
-        <SliderEdit label={t("power.gpuMax")} value={Math.round(Number(p.gpu_max || 0) * 100)} min={35} max={100} step={1} onChange={(v) => setGpuValue("gpu_max", (v / 100).toFixed(2))} />
-        <ButtonRow layout="below" onClick={resetProfile}>{t("common.resetToDefault")}</ButtonRow>
-      </PanelSection>
-    </>
-  );
+  return <ArmadaModalRoot bAllowFullSize bDisableBackgroundDismiss={saving} bCancelDisabled={saving} onCancel={cancel}>
+    <ArmadaDialogHeader>{t("profiles.editPerformance", { profile: translateLabel(profile.label || titleCase(profileId)) })}</ArmadaDialogHeader>
+    <DialogBody className="afc-scope">
+      {error ? <div className="afc-error" role="alert">{error}</div> : null}
+      <DialogControlsSection>
+        <DialogControlsSectionHeader>{t("profiles.cpuSettings")}</DialogControlsSectionHeader>
+        {initial.perf?.governors?.length ? <Field label={t("power.cpuGovernor")} bottomSeparator="standard" childrenLayout="below">
+          <Dropdown selectedOption={profile.cpu_governor} rgOptions={initial.perf.governors.map((data) => ({ data, label: translateLabel(titleCase(data)) }))} disabled={saving} onChange={(option) => setValue("cpu_governor", String(option.data))} />
+        </Field> : null}
+        {supportsUnderclock ? <Field label={t("power.cpuUnderclock")} bottomSeparator="standard" childrenLayout="below">
+          <Dropdown selectedOption={profile.cpu_underclock || ""} rgOptions={["none", "small", "medium", "large"].map((data) => ({ data, label: translateLabel(titleCase(data)) }))} disabled={saving} onChange={(option) => setValue("cpu_underclock", String(option.data))} />
+        </Field> : <SliderField label={t("power.cpuMax")} value={Math.round(Number(profile.cpu_max || 0) * 100)} min={35} max={100} step={1} showValue disabled={saving} onChange={(value) => setValue("cpu_max", (value / 100).toFixed(2))} />}
+      </DialogControlsSection>
+      <DialogControlsSection>
+        <DialogControlsSectionHeader>{t("profiles.gpuSettings")}</DialogControlsSectionHeader>
+        <SliderField label={t("power.gpuMin")} value={Math.round(Number(profile.gpu_min || 0) * 100)} min={0} max={100} step={1} showValue disabled={saving} onChange={(value) => setGpu("gpu_min", value)} />
+        <SliderField label={t("power.gpuMax")} value={Math.round(Number(profile.gpu_max || 0) * 100)} min={35} max={100} step={1} showValue disabled={saving} onChange={(value) => setGpu("gpu_max", value)} />
+      </DialogControlsSection>
+      <DialogControlsSection>
+        <DialogControlsSectionHeader>{t("profiles.otherSettings")}</DialogControlsSectionHeader>
+        <Field label={t("power.fanCurve")} bottomSeparator="standard" childrenLayout="below">
+          <Dropdown selectedOption={profile.fan_curve} rgOptions={fanCurves} disabled={saving} onChange={(option) => setValue("fan_curve", String(option.data))} />
+        </Field>
+        <DialogButton disabled={saving || !initial.powerDefaults?.profiles[profileId]} onClick={() => setProfile(clone(initial.powerDefaults.profiles[profileId]))}>{t("common.resetToDefault")}</DialogButton>
+      </DialogControlsSection>
+    </DialogBody>
+    <ArmadaDialogFooter>
+      <DialogButton disabled={saving || !dirty} onClick={() => { void save(); }}>{saving ? t("common.saving") : t("common.saveChanges")}</DialogButton>
+      <DialogButton disabled={saving} onClick={cancel}>{t("common.cancel")}</DialogButton>
+    </ArmadaDialogFooter>
+  </ArmadaModalRoot>;
 }

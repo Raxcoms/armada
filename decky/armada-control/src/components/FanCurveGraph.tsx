@@ -8,6 +8,7 @@ import {
   CURVE_PWM_MIN as PWM_MIN,
   CURVE_TEMP_MAX as TEMP_MAX,
   CURVE_TEMP_MIN as TEMP_MIN,
+  compareCurvePoints,
   percentToPwm,
   pwmToPercent,
 } from "../lib/fanCurve";
@@ -52,7 +53,7 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
   const [controllerActive, setControllerActive] = useState(false);
   const [controllerIndex, setControllerIndex] = useState(0);
   const shown = livePoints ?? points;
-  const sorted = useMemo(() => [...shown].sort((a, b) => a.temp - b.temp), [shown]);
+  const sorted = useMemo(() => [...shown].sort(compareCurvePoints), [shown]);
   if (!sorted.length) return null;
 
   const eventToPoint = (e: ReactPointerEvent): CurvePoint | null => {
@@ -188,24 +189,32 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
       focusClassName="afc-graph-focused"
       onActivate={enterControllerMode}
       onOKButton={enterControllerMode}
-      onCancelButton={controllerActive ? exitControllerMode : undefined}
+      onCancelButton={controllerActive ? (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        exitControllerMode();
+      } : undefined}
       onButtonDown={controllerActive ? handleGraphButtonDown : undefined}
       onGamepadDirection={controllerActive ? handleGraphDirection : undefined}
       onGamepadBlur={controllerActive ? exitControllerMode : undefined}
       onOKActionDescription={controllerActive ? undefined : t("fanCurve.editPoint")}
       onCancelActionDescription={controllerActive ? t("fanCurve.stopEditing") : undefined}
+      actionDescriptionMap={controllerActive ? {
+        [GamepadButton.BUMPER_LEFT]: t("fanCurve.previousPoint"),
+        [GamepadButton.BUMPER_RIGHT]: t("fanCurve.nextPoint"),
+      } : undefined}
     >
       <svg
         ref={svgRef}
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        style={{ width: "100%", height: "auto", display: "block", touchAction: "none", userSelect: "none" }}
+        className="armada-fan-graph"
       >
-        <rect x={PAD_LEFT} y={PAD_TOP} width={PLOT_W} height={PLOT_H} fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.15)" />
+        <rect className="armada-fan-graph-surface" x={PAD_LEFT} y={PAD_TOP} width={PLOT_W} height={PLOT_H} />
       {fanStopActive ? (
         <g pointerEvents="none">
-          <rect x={PAD_LEFT} y={PAD_TOP} width={Math.max(0, fanStopX - PAD_LEFT)} height={PLOT_H} fill="rgba(255,209,102,0.14)" />
-          <line x1={fanStopX} x2={fanStopX} y1={PAD_TOP} y2={PAD_TOP + PLOT_H} stroke="rgba(255,209,102,0.55)" strokeDasharray="2,2" />
-          <text x={PAD_LEFT + 2} y={PAD_TOP + 9} fontSize="7" textAnchor="start" fill="rgba(255,209,102,0.85)">
+          <rect className="armada-fan-graph-stop" x={PAD_LEFT} y={PAD_TOP} width={Math.max(0, fanStopX - PAD_LEFT)} height={PLOT_H} />
+          <line className="armada-fan-graph-stop-line" x1={fanStopX} x2={fanStopX} y1={PAD_TOP} y2={PAD_TOP + PLOT_H} strokeDasharray="2,2" />
+          <text className="armada-fan-graph-warning" x={PAD_LEFT + 2} y={PAD_TOP + 9} textAnchor="start">
             {t("fanCurve.stopped")}
           </text>
         </g>
@@ -214,8 +223,8 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
         const pwm = percentToPwm(percent);
         return (
           <g key={`pwm-${percent}`}>
-            <line x1={PAD_LEFT} x2={PAD_LEFT + PLOT_W} y1={yForPwm(pwm)} y2={yForPwm(pwm)} stroke="rgba(255,255,255,0.08)" />
-            <text x={PAD_LEFT - 4} y={yForPwm(pwm) + 3} fontSize="7" textAnchor="end" fill="rgba(255,255,255,0.55)">
+            <line className="armada-fan-graph-grid" x1={PAD_LEFT} x2={PAD_LEFT + PLOT_W} y1={yForPwm(pwm)} y2={yForPwm(pwm)} />
+            <text x={PAD_LEFT - 4} y={yForPwm(pwm) + 3} textAnchor="end">
               {`${percent}%`}
             </text>
           </g>
@@ -223,23 +232,22 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
       })}
       {TEMP_TICKS.map((temp) => (
         <g key={`temp-${temp}`}>
-          <line x1={xForTemp(temp)} x2={xForTemp(temp)} y1={PAD_TOP} y2={PAD_TOP + PLOT_H} stroke="rgba(255,255,255,0.06)" />
-          <text x={xForTemp(temp)} y={HEIGHT - 4} fontSize="7" textAnchor="middle" fill="rgba(255,255,255,0.55)">
+          <line className="armada-fan-graph-grid" x1={xForTemp(temp)} x2={xForTemp(temp)} y1={PAD_TOP} y2={PAD_TOP + PLOT_H} />
+          <text x={xForTemp(temp)} y={HEIGHT - 4} textAnchor="middle">
             {temp}
           </text>
         </g>
       ))}
-      <path d={pathD} fill="none" stroke="#5cc8ff" strokeWidth={2} />
+      <path className="armada-fan-graph-curve" d={pathD} strokeWidth={2} />
       {hasCurrentTemp ? (
         <g pointerEvents="none">
-          <circle cx={currentTempX} cy={currentTempY} r={7} fill="rgba(255,255,255,0.18)" />
-          <circle cx={currentTempX} cy={currentTempY} r={3.5} fill="#ffffff" stroke="#0D141C" strokeWidth={1.5} />
+          <circle className="armada-fan-graph-marker-halo" cx={currentTempX} cy={currentTempY} r={7} />
+          <circle className="armada-fan-graph-marker" cx={currentTempX} cy={currentTempY} r={3.5} strokeWidth={1.5} />
           <text
             x={clamp(currentTempX, PAD_LEFT + 14, PAD_LEFT + PLOT_W - 14)}
             y={currentTempY - 10 < PAD_TOP ? currentTempY + 15 : currentTempY - 10}
-            fontSize="7"
+            className="armada-fan-graph-temperature"
             textAnchor="middle"
-            fill="#ffffff"
           >
             {`${currentTemp}°C`}
           </text>
@@ -256,19 +264,18 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
               cx={xForTemp(point.temp)}
               cy={yForPwm(point.pwm)}
               r={14}
-              fill="transparent"
+              className="armada-fan-graph-hit-target"
               onPointerDown={onPointerDown(index)}
               onPointerMove={onPointerMove}
               onPointerUp={endDrag}
               onPointerCancel={endDrag}
-              style={{ cursor: "grab", touchAction: "none" }}
             />
             <circle
               cx={xForTemp(point.temp)}
               cy={yForPwm(point.pwm)}
               r={isActive ? 6 : 4.5}
-              fill={isActive ? "#ffd166" : "#5cc8ff"}
-              stroke="#0D141C"
+              className="armada-fan-graph-point"
+              data-active={isActive}
               strokeWidth={1.5}
               pointerEvents="none"
             />
@@ -276,9 +283,8 @@ export function FanCurveGraph({ points, onChange, currentTemp }: {
               <text
                 x={xForTemp(point.temp)}
                 y={yForPwm(point.pwm) - 12 < PAD_TOP ? yForPwm(point.pwm) + 14 : yForPwm(point.pwm) - 12}
-                fontSize="8"
+                className="armada-fan-graph-warning"
                 textAnchor="middle"
-                fill="#ffd166"
               >
                 {`${point.temp}°C / ${pwmToPercent(point.pwm)}%`}
               </text>

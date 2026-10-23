@@ -1,81 +1,88 @@
-import { DialogBody, DialogButton, DialogFooter } from "@decky/ui";
-import { useState } from "react";
+import { ConfirmModal, DialogBody, DialogButton, showModal } from "@decky/ui";
+import { useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { saveFanCurves } from "../backend";
-import { FanCurveGraphEditor } from "./FanCurveEditor";
 import { useCurrentTemp } from "../hooks/useCurrentTemp";
 import { useFanCurvesSave } from "../hooks/useFanCurvesSave";
-import { t } from "../i18n";
-import type { CurvesState } from "../types";
-import { ArmadaModalRoot } from "./ArmadaModalRoot";
+import { t, translateLabel } from "../i18n";
+import { parseCurve } from "../lib/fanCurve";
+import { resolveFanCurve } from "../lib/profileDraft";
+import { clone, titleCase } from "../lib/util";
+import type { CurvesState, FanCurve } from "../types";
+import { ArmadaDialogFooter, ArmadaDialogHeader, ArmadaModalRoot } from "./ArmadaModalRoot";
+import { FanCurveEditor } from "./FanCurveEditor";
+import { SupportingText } from "./widgets";
 
-export function FanCurveEditorModal({
-  initial,
-  setDraft,
-  initialSelected,
-  onSelectedChange,
-  saved,
-  onSaved,
-  closeModal,
-}: {
+export function FanCurveEditorModal({ initial, curveId, createdCurve, onSaved, closeModal }: {
   initial: CurvesState;
-  setDraft: Dispatch<SetStateAction<CurvesState | null>>;
-  initialSelected: string;
-  onSelectedChange: (value: string) => void;
-  saved: CurvesState | null;
+  curveId: string;
+  createdCurve?: FanCurve;
   onSaved: (next: CurvesState) => void;
   closeModal?: () => void;
 }) {
-  const [state, setState] = useState(initial);
-  const [selected, setSelected] = useState(initialSelected);
-  const [savedState, setSavedState] = useState(saved);
-  const currentTemp = useCurrentTemp();
-  const setBoth: Dispatch<SetStateAction<CurvesState | null>> = (value) => {
-    setState((current) => {
-      const next = typeof value === "function"
-        ? (value as (c: CurvesState | null) => CurvesState | null)(current)
-        : value;
-      return next ?? current;
-    });
-    setDraft(value);
-  };
-  const setSelectedBoth = (value: string) => {
-    setSelected(value);
-    onSelectedChange(value);
-  };
-  const { dirty, saving, saveError, handleSave, handleRevert } = useFanCurvesSave({
+  const [state, setState] = useState(() => {
+    const next = clone(initial);
+    if (createdCurve) next.fanCurves[curveId] = clone(createdCurve);
+    return next;
+  });
+  const [saved, setSaved] = useState(() => clone(initial));
+  const [resetVersion, setResetVersion] = useState(0);
+  const busy = useRef(false);
+  const { dirty, saving, saveError, handleSave, handleDelete } = useFanCurvesSave({
     working: state,
-    saved: savedState,
-    setSaved: setSavedState,
-    setWorking: setBoth,
-    save: saveFanCurves,
+    saved,
+    setSaved,
+    setWorking: setState,
+    save: (changes, deleted) => saveFanCurves(Object.fromEntries(Object.entries(changes).map(([id, curve]) => [id, { ...curve, label: curve.label.trim() }])), deleted),
     onSaved,
   });
+  const currentTemp = useCurrentTemp();
+  const curve = state.fanCurves[curveId];
+  const label = translateLabel(curve?.label || titleCase(curveId));
+  const custom = !initial.factoryFanCurves[curveId];
+  const assigned = Object.values(state.profiles).some((profile) => profile.fan_curve === curveId);
+  const valid = !!curve?.label.trim() && parseCurve(curve?.curve).length > 0;
+  const edit: Dispatch<SetStateAction<CurvesState | null>> = (value) => {
+    if (busy.current) return;
+    setState((current) => (typeof value === "function" ? value(current) : value) || current);
+  };
+  const cancel = () => { if (!busy.current) closeModal?.(); };
+  const persist = async (remove = false) => {
+    if (busy.current || (!remove && !valid)) return;
+    busy.current = true;
+    try {
+      const success = await (remove ? handleDelete([curveId]) : handleSave());
+      if (success) closeModal?.();
+    } finally {
+      busy.current = false;
+    }
+  };
+  const confirmDelete = () => showModal(<ConfirmModal
+    strTitle={t("fanCurve.delete")}
+    strDescription={t("profiles.deleteDescription", { profile: label })}
+    strOKButtonText={t("common.delete")}
+    strCancelButtonText={t("common.cancel")}
+    onOK={() => { void persist(true); }}
+  />);
 
-  return (
-    // bAllowFullSize -- without it GenericDialog clamps to a small default size.
-    <ArmadaModalRoot bAllowFullSize onCancel={() => closeModal?.()}>
-      <DialogBody className="afc-scope">
-        {saveError ? <div className="afc-error">{saveError}</div> : null}
-        <FanCurveGraphEditor
-          state={state}
-          setState={setBoth}
-          selected={selected}
-          onSelectedChange={setSelectedBoth}
-          currentTemp={currentTemp}
-        />
-      </DialogBody>
-      <DialogFooter className="armada-control-dialog-footer">
-        <DialogButton onClick={handleSave} disabled={!dirty || saving}>
-          {saving ? t("common.saving") : t("common.saveChanges")}
-        </DialogButton>
-        <DialogButton onClick={handleRevert} disabled={!dirty || saving}>
-          {t("common.revertChanges")}
-        </DialogButton>
-        <DialogButton onClick={() => closeModal?.()}>
-          {t("common.close")}
-        </DialogButton>
-      </DialogFooter>
-    </ArmadaModalRoot>
-  );
+  return <ArmadaModalRoot bAllowFullSize bDisableBackgroundDismiss={saving} bCancelDisabled={saving} onCancel={cancel}>
+    <ArmadaDialogHeader>{t("profiles.editFan", { profile: label })}</ArmadaDialogHeader>
+    <DialogBody className="afc-scope">
+      {saveError ? <div className="afc-error" role="alert">{saveError}</div> : null}
+      {!curve?.label.trim() ? <SupportingText>{t("profiles.nameRequired")}</SupportingText> : null}
+      <FanCurveEditor key={resetVersion} state={state} setState={edit} selected={curveId} currentTemp={currentTemp} disabled={saving} />
+      {custom && assigned ? <SupportingText>{t("profiles.assignedDelete")}</SupportingText> : null}
+    </DialogBody>
+    <ArmadaDialogFooter>
+      <DialogButton onClick={() => { void persist(); }} disabled={!dirty || !valid || saving}>
+        {saving ? t("common.saving") : t("common.saveChanges")}
+      </DialogButton>
+      <DialogButton onClick={cancel} disabled={saving}>{t("common.cancel")}</DialogButton>
+      {!custom ? <DialogButton disabled={saving} onClick={() => {
+        const defaults = resolveFanCurve(initial.factoryFanCurves[curveId], initial.factoryFanSettings);
+        setState((current) => ({ ...current, fanCurves: { ...current.fanCurves, [curveId]: defaults } }));
+        setResetVersion((current) => current + 1);
+      }}>{t("fanCurve.resetFactory")}</DialogButton> : !createdCurve ? <DialogButton disabled={saving || assigned} onClick={confirmDelete}>{t("fanCurve.delete")}</DialogButton> : null}
+    </ArmadaDialogFooter>
+  </ArmadaModalRoot>;
 }

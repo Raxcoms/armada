@@ -13,7 +13,7 @@ export interface SleepLogsStatus {
   directory: string | null;
 }
 
-export interface FanCurve {
+export interface FanCurve extends FanSettings {
   label: string;
   curve: string;
 }

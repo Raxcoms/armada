@@ -1,5 +1,5 @@
 import { call } from "@decky/api";
-import type { CalibrationState, CompatAppliedState, Config, CurvesState, FanCurve, FanSettings, InstalledGame, PowerConfig, RgbConfig, SleepLogsStatus, Tweaks } from "./types";
+import type { CalibrationState, CompatAppliedState, Config, CurvesState, FanCurve, InstalledGame, PowerConfig, RgbConfig, SleepLogsStatus, Tweaks } from "./types";
 
 export const getConfig = () => call<[], Config>("get_config");
 export const getInstalledGames = () => call<[], InstalledGame[]>("get_installed_games");
@@ -56,6 +56,6 @@ export const beginCalibrationSession = (token: string) => call<[string], boolean
 export const endCalibrationSession = (token: string) => call<[string], boolean>("end_calibration_session", token);
 export const setChargingFanPwm = (pwm: number) => call<[number], number>("set_charging_fan_pwm", pwm);
 export const getFansState = () => call<[], CurvesState>("get_fans_state");
-export const saveFanCurves = (fanCurves: Record<string, FanCurve>, fanSettings: FanSettings) =>
-  call<[Record<string, FanCurve>, FanSettings], CurvesState>("save_fan_curves", fanCurves, fanSettings);
+export const saveFanCurves = (changes: Record<string, FanCurve>, deleted: string[] = []) =>
+  call<[Record<string, FanCurve>, string[]], CurvesState>("save_fan_curves", changes, deleted);
 export const getCurrentTemp = () => call<[], number | null>("get_current_temp");

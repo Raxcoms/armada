@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import { CURVE_PWM_MAX, CURVE_PWM_MIN, CURVE_TEMP_MAX, DEFAULT_POINT, formatCurve, parseCurve } from "../lib/fanCurve";
 import type { CurvePoint } from "../lib/fanCurve";
+import { resolveFanCurve } from "../lib/profileDraft";
 import { clamp, clone, update } from "../lib/util";
 import type { CurvesState, FanCurve } from "../types";
 
@@ -25,10 +26,11 @@ export function useSelectedFanCurve(
   selected: string,
 ): SelectedFanCurve {
   const names = Object.keys(state.fanCurves || {}).sort();
-  const curveName = names.includes(selected) ? selected : names[0] || "";
-  const curve = curveName ? state.fanCurves[curveName] : undefined;
+  const curveName = names.includes(selected) ? selected : "";
+  const curve = curveName ? resolveFanCurve(state.fanCurves[curveName], state.fanSettings) : undefined;
   const points = curve ? parseCurve(curve.curve) : [];
-  const factoryCurve = curveName ? state.factoryFanCurves?.[curveName] : undefined;
+  const factory = curveName ? state.factoryFanCurves?.[curveName] : undefined;
+  const factoryCurve = factory ? resolveFanCurve(factory, state.factoryFanSettings) : undefined;
 
   const commitPoints = (nextPoints: CurvePoint[]) => {
     if (!curveName) return;
@@ -58,12 +60,13 @@ export function useSelectedFanCurve(
     commitPoints([...points, { ...DEFAULT_POINT, temp }]);
   };
 
-  const belowMinPoint = points.some((point) => point.pwm < state.fanSettings.min_pwm);
+  const fanStopEnabled = points[0]?.pwm === 0;
+  const belowMinPoint = !fanStopEnabled && points.some((point) => point.pwm < (curve?.min_pwm ?? 0));
 
   const fixMinPwm = () => {
     if (!points.length) return;
     const lowestPwm = clamp(Math.min(...points.map((point) => point.pwm)), CURVE_PWM_MIN, CURVE_PWM_MAX);
-    setState((current) => (current ? update(current, ["fanSettings", "min_pwm"], lowestPwm) : current));
+    setState((current) => (current ? update(current, ["fanCurves", curveName, "min_pwm"], lowestPwm) : current));
   };
 
   return {
