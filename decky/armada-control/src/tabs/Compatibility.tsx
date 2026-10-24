@@ -1,6 +1,7 @@
 import {
   DialogBody,
   DialogButton,
+  DialogButtonPrimary,
   DialogControlsSection,
   Dropdown,
   Field,
@@ -102,7 +103,7 @@ function ConfirmResetAllModal({ closeModal, onConfirm }: { closeModal?: () => vo
         {t("compatibility.resetAllDescription")}
       </DialogBody>
       <ArmadaDialogFooter>
-        <DialogButton onClick={confirm}>{t("compatibility.resetAllGames")}</DialogButton>
+        <DialogButtonPrimary onClick={confirm}>{t("compatibility.resetAllGames")}</DialogButtonPrimary>
         <DialogButton onClick={closeModal}>{t("common.cancel")}</DialogButton>
       </ArmadaDialogFooter>
     </ArmadaModalRoot>
@@ -129,7 +130,7 @@ function ConfirmResetGameModal({
         {t("compatibility.resetGameDescription", { game: gameName })}
       </DialogBody>
       <ArmadaDialogFooter>
-        <DialogButton onClick={confirm}>{t("compatibility.resetGame")}</DialogButton>
+        <DialogButtonPrimary onClick={confirm}>{t("compatibility.resetGame")}</DialogButtonPrimary>
         <DialogButton onClick={closeModal}>{t("common.cancel")}</DialogButton>
       </ArmadaDialogFooter>
     </ArmadaModalRoot>
@@ -154,7 +155,7 @@ function ConfirmGameModeRestartModal({
         {t("compatibility.restartGameModeDescription")}
       </DialogBody>
       <ArmadaDialogFooter>
-        <DialogButton onClick={restart}>{t("compatibility.restartGameMode")}</DialogButton>
+        <DialogButtonPrimary onClick={restart}>{t("compatibility.restartGameMode")}</DialogButtonPrimary>
         <DialogButton onClick={closeModal}>{t("common.later")}</DialogButton>
       </ArmadaDialogFooter>
     </ArmadaModalRoot>
@@ -242,7 +243,7 @@ function EnvVarModal({
         </DialogControlsSection>
       </DialogBody>
       <ArmadaDialogFooter>
-        <DialogButton disabled={fromPresets && (!key || !value)} onClick={save}>{t("common.save")}</DialogButton>
+        <DialogButtonPrimary disabled={fromPresets && (!key || !value)} onClick={save}>{t("common.save")}</DialogButtonPrimary>
         {onDelete ? (
           <DialogButton
             onClick={() => {

@@ -124,7 +124,7 @@ function setup(overrides: Record<string, any> = {}, initialResolution = "Native"
     require: (id: string) => {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx: element, jsxs: element, Fragment: "Fragment" };
-      if (id === "@decky/ui") return { ...Object.fromEntries(componentNames.map((name) => [name, name])), showModal: (modal: Element) => modals.push(modal) };
+      if (id === "@decky/ui") return { ...Object.fromEntries(componentNames.map((name) => [name, name])), DialogButtonPrimary: "DialogButton", showModal: (modal: Element) => modals.push(modal) };
       if (id === "../components/widgets") return Object.fromEntries(["ButtonRow", "ControlRow", "NoticeSection", "SectionDescription", "SelectEdit", "SliderEdit", "SupportingText", "ToggleRow"].map((name) => [name, name]));
       if (id === "../components/ArmadaModalRoot") return { ArmadaModalRoot: "ArmadaModalRoot", ArmadaDialogHeader: "ArmadaDialogHeader", ArmadaDialogFooter: "ArmadaDialogFooter" };
       if (id === "../i18n") return {

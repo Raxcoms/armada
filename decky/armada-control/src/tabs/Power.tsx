@@ -1,4 +1,4 @@
-import { DialogBody, DialogButton, DialogControlsSection, DialogControlsSectionHeader, Dropdown, Field, SliderField } from "@decky/ui";
+import { DialogBody, DialogButton, DialogButtonPrimary, DialogControlsSection, DialogControlsSectionHeader, Dropdown, Field, SliderField } from "@decky/ui";
 import { useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { savePowerConfig } from "../backend";
@@ -79,7 +79,7 @@ export function PowerProfileEditorModal({ profileId, getLatestConfig, setConfig,
       </DialogControlsSection>
     </DialogBody>
     <ArmadaDialogFooter>
-      <DialogButton disabled={saving || !dirty} onClick={() => { void save(); }}>{saving ? t("common.saving") : t("common.saveChanges")}</DialogButton>
+      <DialogButtonPrimary disabled={saving || !dirty} onClick={() => { void save(); }}>{saving ? t("common.saving") : t("common.saveChanges")}</DialogButtonPrimary>
       <DialogButton disabled={saving} onClick={cancel}>{t("common.cancel")}</DialogButton>
     </ArmadaDialogFooter>
   </ArmadaModalRoot>;

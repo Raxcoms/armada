@@ -18,7 +18,7 @@ function setup() {
   runInNewContext(compiled, { exports, require: (id: string) => {
     if (id === "@decky/ui") return {
       classMap: [{ Field: "PanelField" }, { Field: "DialogField" }, { Field: "PanelField" }, {}],
-      DialogBody: "DialogBody", DialogButton: "DialogButton", DialogFooter: "DialogFooter",
+      DialogBody: "DialogBody", DialogButton: "DialogButton", DialogButtonPrimary: "DialogButtonPrimary", DialogFooter: "DialogFooter",
       DialogHeader: "DialogHeader", Focusable: "Focusable", ModalRoot: "ModalRoot",
     };
     if (id === "react") return { useRef: () => ({ current: null }) };
@@ -101,7 +101,7 @@ test("confirmations share the native heading, body and horizontal footer", () =>
   const row = ArmadaDialogFooter(footer.props).props.children;
   assert.equal(row.props["flow-children"], "row");
   const [confirm, cancel] = row.props.children;
-  assert.equal(confirm.type, "DialogButton");
+  assert.equal(confirm.type, "DialogButtonPrimary");
   assert.equal(confirm.props.children, "Delete");
   assert.equal(cancel.type, "DialogButton");
   assert.equal(cancel.props.children, "Cancel");

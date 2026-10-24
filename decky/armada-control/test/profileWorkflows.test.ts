@@ -120,7 +120,7 @@ function setup() {
       require: (id: string): any => {
         if (id === "react") return react;
         if (id === "react/jsx-runtime") return { jsx: element, jsxs: element, Fragment: "Fragment" };
-        if (id === "@decky/ui") return { ...Object.fromEntries(componentNames.map((name) => [name, name])), gamepadDialogClasses: { FieldDescription: "native-description" }, showModal: (modal: Element) => modals.push(modal) };
+        if (id === "@decky/ui") return { ...Object.fromEntries(componentNames.map((name) => [name, name])), DialogButtonPrimary: "DialogButton", gamepadDialogClasses: { FieldDescription: "native-description" }, showModal: (modal: Element) => modals.push(modal) };
         if (id === "../backend") return backend;
         if (id === "../i18n") return { t: (key: string) => key, translateLabel: (label: string) => label };
         if (id === "../lib/fanCurve") return fanCurve;

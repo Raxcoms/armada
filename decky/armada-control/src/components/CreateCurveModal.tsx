@@ -1,4 +1,4 @@
-import { DialogBody, DialogButton, DialogControlsSection, Dropdown, Field, TextField } from "@decky/ui";
+import { DialogBody, DialogButton, DialogButtonPrimary, DialogControlsSection, Dropdown, Field, TextField } from "@decky/ui";
 import { useState } from "react";
 import { t, translateLabel } from "../i18n";
 import { slugifyCurveName } from "../lib/fanCurve";
@@ -68,9 +68,9 @@ export function CreateCurveModal({
         </SupportingText>
       </DialogBody>
       <ArmadaDialogFooter>
-        <DialogButton onClick={createCurve} disabled={!canCreate}>
+        <DialogButtonPrimary onClick={createCurve} disabled={!canCreate}>
           {t("fanCurve.create")}
-        </DialogButton>
+        </DialogButtonPrimary>
         <DialogButton onClick={() => closeModal?.()}>{t("common.cancel")}</DialogButton>
       </ArmadaDialogFooter>
     </ArmadaModalRoot>

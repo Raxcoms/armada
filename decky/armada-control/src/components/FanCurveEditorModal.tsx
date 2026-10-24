@@ -1,4 +1,4 @@
-import { DialogBody, DialogButton, showModal } from "@decky/ui";
+import { DialogBody, DialogButton, DialogButtonPrimary, showModal } from "@decky/ui";
 import { useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { saveFanCurves } from "../backend";
@@ -74,9 +74,9 @@ export function FanCurveEditorModal({ initial, curveId, createdCurve, onSaved, c
       {custom && assigned ? <SupportingText>{t("profiles.assignedDelete")}</SupportingText> : null}
     </DialogBody>
     <ArmadaDialogFooter>
-      <DialogButton onClick={() => { void persist(); }} disabled={!dirty || !valid || saving}>
+      <DialogButtonPrimary onClick={() => { void persist(); }} disabled={!dirty || !valid || saving}>
         {saving ? t("common.saving") : t("common.saveChanges")}
-      </DialogButton>
+      </DialogButtonPrimary>
       <DialogButton onClick={cancel} disabled={saving}>{t("common.cancel")}</DialogButton>
       {!custom ? <DialogButton disabled={saving} onClick={() => {
         const defaults = resolveFanCurve(initial.factoryFanCurves[curveId], initial.factoryFanSettings);

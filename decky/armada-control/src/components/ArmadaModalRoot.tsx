@@ -1,4 +1,4 @@
-import { classMap, DialogBody, DialogButton, DialogFooter, DialogHeader, Focusable, ModalRoot } from "@decky/ui";
+import { classMap, DialogBody, DialogButton, DialogButtonPrimary, DialogFooter, DialogHeader, Focusable, ModalRoot } from "@decky/ui";
 import type { FocusableProps, ModalRootProps } from "@decky/ui";
 import { useRef } from "react";
 import type { ComponentType, ReactNode, RefAttributes } from "react";
@@ -68,7 +68,7 @@ export function ArmadaConfirmModal({ title, description, confirmText, cancelText
     <ArmadaDialogHeader>{title}</ArmadaDialogHeader>
     <DialogBody>{description}</DialogBody>
     <ArmadaDialogFooter>
-      <DialogButton onClick={confirm}>{confirmText}</DialogButton>
+      <DialogButtonPrimary onClick={confirm}>{confirmText}</DialogButtonPrimary>
       <DialogButton onClick={closeModal}>{cancelText}</DialogButton>
     </ArmadaDialogFooter>
   </ArmadaModalRoot>;

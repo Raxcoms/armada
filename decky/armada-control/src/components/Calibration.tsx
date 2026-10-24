@@ -1,6 +1,7 @@
 import {
   DialogBody,
   DialogButton,
+  DialogButtonPrimary,
   ProgressBar,
   showModal,
 } from "@decky/ui";
@@ -220,14 +221,14 @@ function CalibrationModal({ closeModal, onChanged }: {
           <DialogButton onClick={close}>{t("common.close")}</DialogButton>
         ) : phase === "recording" ? (
           <>
-            <DialogButton onClick={save} disabled={!progress?.ready || busy}>{t("calibration.save")}</DialogButton>
+            <DialogButtonPrimary onClick={save} disabled={!progress?.ready || busy}>{t("calibration.save")}</DialogButtonPrimary>
             <DialogButton onClick={close} disabled={busy}>
               {closing ? t("calibration.applying") : t("common.close")}
             </DialogButton>
           </>
         ) : (
           <>
-            <DialogButton onClick={start} disabled={busy}>{t("calibration.start")}</DialogButton>
+            <DialogButtonPrimary onClick={start} disabled={busy}>{t("calibration.start")}</DialogButtonPrimary>
             <DialogButton onClick={reset} disabled={busy}>{t("calibration.resetDefaults")}</DialogButton>
             <DialogButton onClick={close} disabled={busy}>
               {closing ? t("calibration.applying") : t("common.close")}
