@@ -22,7 +22,6 @@ runInNewContext(compile(readSource("styles.ts")), { exports: styleExports, requi
   if (id === "./components/visualStyles") return { visualStyles: "" };
   if (id === "./components/TabNavigation.styles") return { tabNavigationStyles: "" };
   if (id === "./components/buttonStyles") return buttonExports;
-  if (id === "./components/noticeStyles") return { noticeStyles: "" };
   throw new Error(`Unexpected style import: ${id}`);
 } });
 const styles: string = styleExports.styles;
@@ -83,7 +82,6 @@ test("shared button widgets forward native disabled flags and handlers unchanged
   const element = (type: unknown, props: any) => ({ type, props });
   runInNewContext(compile(readSource("components/widgets.tsx")), { exports, require: (id: string) => {
     if (id === "@decky/ui") return { ButtonItem: "ButtonItem", DialogButton: "DialogButton", gamepadDialogClasses: { NoMinWidth: "native-no-min-width" } };
-    if (id === "../icons") return { noticeIcons: {} };
     if (id === "react/jsx-runtime") return { jsx: element, jsxs: element };
     throw new Error(`Unexpected widget import: ${id}`);
   } });

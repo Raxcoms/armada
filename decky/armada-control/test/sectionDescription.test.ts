@@ -13,18 +13,13 @@ function widgets() {
   }).outputText;
   const element = (type: unknown, props: unknown) => ({ type, props });
   const jsx = { jsx: element, jsxs: element, Fragment: "Fragment" };
-  const icons: any = {};
-  runInNewContext(ts.transpileModule(readFileSync(new URL("icons.tsx", sourceRoot), "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText, { exports: icons, require: () => jsx });
   const exports: any = {};
   runInNewContext(compiled, { exports, require: (id: string) => {
     if (id === "@decky/ui") return { Field: "NativeField", PanelSection: "NativeSection", PanelSectionRow: "NativeRow" };
     if (id === "react/jsx-runtime") return jsx;
-    if (id === "../icons") return icons;
     throw Error(`Unexpected import: ${id}`);
   } });
-  return { ...exports, noticeIcons: icons.noticeIcons };
+  return exports;
 }
 
 test("section descriptions reuse native configuration typography without focus or row separators", () => {
@@ -54,37 +49,13 @@ test("selectable notices put the title and description in one full-width native 
   assert.equal(row.type, "NativeRow");
   const description = row.props.children;
   assert.equal(description.type, "NativeField");
-  assert.equal(description.props.label.props.className, "armada-notice-title");
-  assert.equal(description.props.label.props.children[0], exports.noticeIcons.information);
-  assert.equal(description.props.label.props.children[1].props.children, title);
+  assert.equal(description.props.label, title);
   assert.equal(description.props.className, "armada-notice");
   assert.equal(description.props.description, text);
   assert.equal(description.props.focusable, true);
   assert.equal(description.props.highlightOnFocus, true);
   assert.equal(description.props.bottomSeparator, "none");
   for (const prop of ["onClick", "onActivate", "onButtonDown", "style"]) assert.equal(description.props[prop], undefined, prop);
-});
-
-test("information and warning notices use decorative icons within the same native focus target", () => {
-  const exports = widgets();
-  for (const kind of ["information", "warning"]) {
-    const section = exports.NoticeSection({ kind, title: "Localized title", children: "Localized description" });
-    const field = section.props.children.props.children;
-    const icon = field.props.label.props.children[0];
-    assert.equal(icon, exports.noticeIcons[kind]);
-    const svg = icon.type(icon.props);
-    assert.equal(svg.type, "svg");
-    assert.equal(svg.props["aria-hidden"], "true");
-    assert.equal(svg.props.focusable, "false");
-    assert.equal(svg.props.tabIndex, undefined);
-    assert.equal(svg.props.stroke, "currentColor");
-    assert.equal(field.props.focusable, true);
-    assert.equal(field.props.description, "Localized description");
-    assert.equal(field.props.label.props.children[1].props.children, "Localized title");
-  }
-  assert.notEqual(exports.noticeIcons.information, exports.noticeIcons.warning);
-  const source = readFileSync(new URL("tabs/Experimental.tsx", sourceRoot), "utf8");
-  assert.match(source, /<NoticeSection kind="warning"/);
 });
 
 test("subsections keep native controls directly beneath an accessible shared heading", () => {

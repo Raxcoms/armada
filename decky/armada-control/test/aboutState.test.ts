@@ -37,7 +37,6 @@ function setup() {
     exports: widgets,
     require: (id: string) => {
       if (id === "@decky/ui") return { Field: "Field", PanelSectionRow: "PanelSectionRow" };
-      if (id === "../icons") return { noticeIcons: {} };
       if (id === "react/jsx-runtime") return { jsx: (type: any, props: any) => ({ type, props }) };
       throw new Error(`Unexpected widgets import ${id}`);
     },

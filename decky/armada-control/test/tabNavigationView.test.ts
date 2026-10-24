@@ -134,7 +134,6 @@ function setup(initial = "games", visible = ["games", "profiles", "rgb", "contro
   } });
   runInNewContext(widgetSource, { exports: widgets, require: (id: string) => {
     if (id === "@decky/ui") return native;
-    if (id === "../icons") return { noticeIcons: {} };
     if (id === "react/jsx-runtime") return { jsx: element, jsxs: element };
     throw new Error(`Unexpected widget import: ${id}`);
   } });

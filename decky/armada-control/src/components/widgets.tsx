@@ -2,7 +2,6 @@ import { ButtonItem, DialogButton, DropdownItem, Field, PanelSection, PanelSecti
 import type { ReactNode } from "react";
 import type { ButtonItemProps, DialogButtonProps, FieldProps } from "@decky/ui";
 import type { DropdownChoice } from "../types";
-import { noticeIcons } from "../icons";
 
 type Option = string | DropdownChoice;
 type Separator = "standard" | "thick" | "none";
@@ -27,10 +26,9 @@ export function Subsection({ title, children }: { title: ReactNode; children: Re
   return <><div className="armada-subheader" role="heading" aria-level={3}>{title}</div>{children}</>;
 }
 
-export function NoticeSection({ title, children, kind = "information" }: { title: ReactNode; children: ReactNode; kind?: keyof typeof noticeIcons }) {
-  const label = <span className="armada-notice-title">{noticeIcons[kind]}<span>{title}</span></span>;
+export function NoticeSection({ title, children }: { title: ReactNode; children: ReactNode }) {
   return <PanelSection><ControlRow>
-    <Field className="armada-notice" label={label} description={children} bottomSeparator="none" focusable highlightOnFocus />
+    <Field className="armada-notice" label={title} description={children} bottomSeparator="none" focusable highlightOnFocus />
   </ControlRow></PanelSection>;
 }
 

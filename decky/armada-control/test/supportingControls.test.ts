@@ -15,7 +15,6 @@ function widgets() {
   runInNewContext(compiled, { exports, require: (id: string) => {
     if (id === "@decky/ui") return Object.fromEntries(["ButtonItem", "DropdownItem", "Field", "PanelSectionRow", "SliderField", "ToggleField"].map((name) => [name, name]));
     if (id === "react/jsx-runtime") return { jsx: (type: unknown, props: unknown) => ({ type, props }) };
-    if (id === "../icons") return { noticeIcons: {} };
     throw Error(`Unexpected import: ${id}`);
   } });
   return exports;

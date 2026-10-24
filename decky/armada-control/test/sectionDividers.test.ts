@@ -23,7 +23,6 @@ runInNewContext(compiled, { exports, require: (id: string) => {
   if (id === "./theme") return { theme };
   if (id === "./components/visualStyles") return { visualStyles: "" };
   if (id === "./components/buttonStyles") return { disabledButtonStyles: "" };
-  if (id === "./components/noticeStyles") return { noticeStyles: "" };
   if (id === "./components/TabNavigation.styles") {
     const headerSource = readFileSync(new URL("../src/components/TabNavigation.styles.ts", import.meta.url), "utf8");
     const headerExports: any = {};
