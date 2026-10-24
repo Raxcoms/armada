@@ -66,10 +66,20 @@ export const styles = `
       }
       .armada-loading-state {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
+        gap: ${theme.spaceMedium};
         min-block-size: var(--armada-panel-available-height, 100%);
         min-inline-size: 0;
+      }
+      .armada-loading-spinner {
+        inline-size: ${theme.loadingIndicatorSize};
+        block-size: ${theme.loadingIndicatorSize};
+        flex: none;
+      }
+      .armada-loading-state .armada-supporting-text {
+        text-align: center;
       }
       .armada-control-startup .armada-note-error {
         color: ${theme.error};

@@ -28,6 +28,7 @@ test("shared theme tokens can follow native values or explicit configuration ove
   assert.match(theme.stickSize, /--armada-calibration-stick-size/);
   assert.match(theme.motion, /--armada-motion-duration/);
   assert.match(theme.supportingText, /--armada-theme-supporting-text, #969696/);
+  assert.match(theme.loadingIndicatorSize, /--armada-loading-indicator-size, 48px/);
   assert.match(theme.tabText, /--armada-tab-text-size, \.9375rem/);
 });
 

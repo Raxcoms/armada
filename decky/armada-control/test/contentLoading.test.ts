@@ -135,9 +135,10 @@ test("loading indicator uses the native spinner with an accessible status", () =
     exports,
     require: (id: string) => {
       if (id === "react/jsx-runtime") return jsxRuntime;
-      if (id === "@decky/ui") return { SteamSpinner: "SteamSpinner" };
+      if (id === "@decky/ui") return { Spinner: "Spinner" };
       if (id === "react") return { useRef: () => ({ current: null }) };
       if (id === "../hooks/usePanelHeight") return { usePanelHeight: () => {} };
+      if (id === "./widgets") return { SupportingText: "SupportingText" };
       if (id === "../i18n") return { t: (key: string) => key };
       throw new Error(id);
     },
@@ -147,12 +148,11 @@ test("loading indicator uses the native spinner with an accessible status", () =
   assert.equal(status.props.role, "status");
   assert.equal(status.props["aria-busy"], true);
   assert.equal(status.props["aria-live"], "polite");
-  const spinner = status.props.children;
-  assert.equal(spinner.type, "SteamSpinner");
-  assert.equal(spinner.props.background, "transparent");
-  assert.equal(spinner.props.size, "small");
-  assert.equal(spinner.props.showFooter, true);
-  assert.equal(spinner.props.children, "common.loading");
+  const [spinner, label] = status.props.children;
+  assert.equal(spinner.type, "Spinner");
+  assert.equal(spinner.props["aria-hidden"], "true");
+  assert.equal(label.type, "SupportingText");
+  assert.equal(label.props.children, "common.loading");
 });
 
 test("a failed initial load provides a native retry and clears the error while retrying", async () => {

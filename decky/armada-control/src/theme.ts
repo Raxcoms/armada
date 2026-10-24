@@ -28,6 +28,7 @@ export const theme = {
   motion: "var(--armada-motion-duration, 200ms)",
   motionFast: "var(--armada-motion-fast-duration, 90ms)",
   tabHintSize: "var(--armada-tab-hint-size, 1.5rem)",
+  loadingIndicatorSize: "var(--armada-loading-indicator-size, 48px)",
   stickSize: "var(--armada-calibration-stick-size, 8.25em)",
   markerSize: "var(--armada-calibration-marker-size, 1.125em)",
   markerGutter: "var(--armada-calibration-marker-gutter, 1.5em)",
