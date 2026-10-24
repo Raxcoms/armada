@@ -12,7 +12,7 @@ interface DebouncedSaveOptions<K extends SavedField> {
   snapshot: MutableRefObject<string>;
   save: (value: Config[K]) => Promise<Config>;
   setConfig: Dispatch<SetStateAction<Config | null>>;
-  onError?: (error: unknown) => void | Promise<void>;
+  onError?: (error: unknown) => Config | void | Promise<Config | void>;
   delay?: number;
 }
 
@@ -65,7 +65,14 @@ export function useDebouncedSave<K extends SavedField>(options: DebouncedSaveOpt
     timer.current = window.setTimeout(() => {
       timer.current = undefined;
       const request = tail.current.then(() => persist()).catch(async (error) => {
-        if (!manualPending.current) await latest.current.onError?.(error);
+        if (manualPending.current) return;
+        const recovered = await latest.current.onError?.(error);
+        if (recovered) {
+          const { field, snapshot } = latest.current;
+          const current = currentConfig.current;
+          currentConfig.current = current ? { ...current, [field]: recovered[field] } : recovered;
+          snapshot.current = JSON.stringify(recovered[field]);
+        }
       });
       tail.current = request.catch(() => {});
       void tail.current.finally(schedule);

@@ -41,6 +41,7 @@ export function Content() {
         selectedGame: current?.selectedGame,
         installedGames: current?.installedGames || next.installedGames,
       }));
+      return next;
     } catch (error) {
       if (mounted.current && request === loadRequest.current) setLoadError(String(error));
     }

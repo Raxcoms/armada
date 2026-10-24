@@ -244,3 +244,16 @@ test("unmount ignores in-flight loading failures", async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(app.writes, before);
 });
+
+test("save recovery returns the confirmed configuration without waiting for a render", async () => {
+  const app = setup();
+  app.resolve(0);
+  await app.settle();
+  const recovery = app.reload();
+  app.resolve(1, "recovered");
+  const recovered = await recovery;
+  assert.equal(recovered.tweaks.global.marker, "recovered");
+  assert.equal(app.config.tweaks.global.marker, "loaded");
+  app.render();
+  assert.equal(app.config.tweaks.global.marker, "recovered");
+});

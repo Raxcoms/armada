@@ -61,7 +61,7 @@ function setup(initial = { global: { nice: 0 }, games: {} } as any, recover?: ()
         const result = deferred();
         calls.push({ value: structuredClone(value), result });
         return result.promise;
-      }, onError: async (error: unknown) => { errors.push(error); await recover?.(); },
+      }, onError: async (error: unknown) => { errors.push(error); return recover?.(); },
     });
     const current = pending;
     pending = [];
@@ -69,7 +69,7 @@ function setup(initial = { global: { nice: 0 }, games: {} } as any, recover?: ()
   }
   render();
   return {
-    calls, errors, snapshot, render,
+    calls, errors, snapshot, render, setConfig,
     get config() { return config; },
     get timers() { return timers.size; },
     save: (update: (value: any) => any) => saveNow(update),
@@ -215,7 +215,7 @@ test("a newer edit to the same setting survives a completed manual save", async 
   assert.equal(app.timers, 0);
 });
 
-test("manual saves wait for automatic failure recovery before reading their baseline", async () => {
+test("manual saves read recovery before its queued React update has rendered", async () => {
   const recovery = deferred();
   const app = setup(undefined, () => recovery.promise);
   app.edit((current) => ({ ...current, tweaks: changeNice(-1)(current.tweaks) }));
@@ -226,8 +226,8 @@ test("manual saves wait for automatic failure recovery before reading their base
   const saving = app.save((tweaks) => ({ ...tweaks, global: { ...tweaks.global, nice: tweaks.global.nice - 2 } }));
   await app.settle();
   assert.equal(app.calls.length, 1);
-  app.edit((current) => ({ ...current, tweaks: changeNice(0)(current.tweaks) }));
-  recovery.resolve(undefined);
+  app.setConfig((current: any) => ({ ...current, tweaks: changeNice(0)(current.tweaks) }));
+  recovery.resolve({ tweaks: { global: { nice: 0 }, games: {} }, marker: "recovery" });
   await app.settle();
   assert.equal(app.calls[1].value.global.nice, -2);
   app.succeed(1);
