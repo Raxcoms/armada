@@ -1,4 +1,4 @@
-import { revealScrollRegion } from "./scrollRegion";
+import { isLastFocusableRegion, revealScrollRegion } from "./scrollRegion";
 
 const modalSelector = ".armada-control-dialog";
 const positionSelector = ".armada-control-dialog-position";
@@ -30,13 +30,15 @@ export function revealModalFocus(boundary: HTMLElement | null, target: HTMLEleme
   if (target.closest(headingSelector)) return revealModalStart(target);
   const field = (fieldSelector ? target.closest<HTMLElement>(fieldSelector) : null)
     || target.closest<HTMLElement>(".DialogInputLabelGroup");
-  const region = target.closest<HTMLElement>(footerSelector) || field || target;
+  const footer = target.closest<HTMLElement>(footerSelector);
+  const region = footer || field || target;
   const visible = modal.contains(region) ? region : target;
+  const revealEnd = !!footer || isLastFocusableRegion(modal, visible);
   const container = modal.closest<HTMLElement>(positionSelector) || modal;
   let handled = false;
   for (let parent = visible.parentElement; parent && container.contains(parent); parent = parent.parentElement) {
     if (!isScrollRegion(parent)) continue;
-    revealScrollRegion(parent, visible, parent.getBoundingClientRect().top);
+    revealScrollRegion(parent, visible, parent.getBoundingClientRect().top, revealEnd);
     handled = true;
   }
   return handled;

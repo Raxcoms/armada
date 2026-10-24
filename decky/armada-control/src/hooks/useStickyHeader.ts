@@ -1,7 +1,7 @@
 import { classMap, staticClasses } from "@decky/ui";
 import { useLayoutEffect } from "react";
 import type { RefObject } from "react";
-import { bindScrollPadding, findScrollParent, revealScrollRegion } from "../lib/scrollRegion";
+import { bindScrollPadding, findScrollParent, isLastFocusableRegion, revealScrollRegion } from "../lib/scrollRegion";
 
 const fieldSelector = [...new Set(classMap.map((classes) => classes.Field).filter(Boolean))]
   .map((name) => `.${name}`).join(", ");
@@ -46,7 +46,10 @@ export function useStickyHeader(root: RefObject<HTMLDivElement | null>, header: 
       scroller.scrollTo({ top: 0, behavior: "instant" });
     } else {
       const field = fieldSelector ? target.closest<HTMLElement>(fieldSelector) : null;
-      revealScrollRegion(scroller, field && element.contains(field) ? field : target, navigation.getBoundingClientRect().bottom);
+      const region = field && element.contains(field) ? field : target;
+      const panel = target.closest<HTMLElement>(".armada-control-tab-content");
+      const revealEnd = !!panel && element.contains(panel) && isLastFocusableRegion(panel, region);
+      revealScrollRegion(scroller, region, navigation.getBoundingClientRect().bottom, revealEnd);
     }
     return true;
   };

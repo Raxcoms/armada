@@ -271,7 +271,7 @@ test("native focus scrolling is scoped to the plugin and falls back when its scr
   assert.equal(root.props.fnScrollIntoViewHandler({ Element: app.root }), false);
 });
 
-test("the native scroll adapter reveals whole fields and resets the panel when focus returns to the header", () => {
+function setupStickyScroll(final = false) {
   let cleanup: (() => void) | undefined;
   const properties = new Map<string, string>();
   const style = {
@@ -290,7 +290,7 @@ test("the native scroll adapter reveals whole fields and resets the panel when f
   };
   const scroller: any = {
     ownerDocument: document, parentElement: document.body, style,
-    scrollTop: 300, offsetHeight: 400, clientHeight: 400, clientTop: 0,
+    scrollTop: 300, scrollHeight: 738, offsetHeight: 400, clientHeight: 400, clientTop: 0,
     getBoundingClientRect: () => ({ top: 20, height: 400 }),
     scrollTo: (options: ScrollToOptions) => { scroller.scrollTop = options.top; calls.push({ ...options }); },
   };
@@ -301,15 +301,18 @@ test("the native scroll adapter reveals whole fields and resets the panel when f
   };
   const field = {
     getBoundingClientRect: () => ({ top: 620 - scroller.scrollTop, bottom: 700 - scroller.scrollTop, height: 80 }),
+    contains: (target: unknown) => target === input,
   };
-  const input = { closest: (selector: string) => {
-    assert.equal(selector, ".native-field");
-    return field;
+  const panel = { querySelectorAll: () => final ? [input] : [input, { ...input }] };
+  const input: any = { tabIndex: 0, matches: () => false, getClientRects: () => [{}], closest: (selector: string) => {
+    if (selector === ".native-field") return field;
+    if (selector === ".armada-control-tab-content") return panel;
+    return null;
   } };
   const root: any = {
     ownerDocument: document, parentElement: scroller, style,
     closest: () => ({ querySelector: () => ({ offsetHeight: 32 }) }),
-    contains: (target: unknown) => target === header || target === input || target === field,
+    contains: (target: unknown) => target === header || target === input || target === field || target === panel,
   };
   const exports: any = {};
   runInNewContext(stickySource, { exports, require: (id: string) => {
@@ -319,6 +322,11 @@ test("the native scroll adapter reveals whole fields and resets the panel when f
     throw new Error(`Unexpected scroll adapter import: ${id}`);
   } });
   const reveal = exports.useStickyHeader({ current: root }, { current: header });
+  return { reveal, scroller, header, field, input, calls, cleanup };
+}
+
+test("the native scroll adapter reveals whole fields and resets the panel when focus returns to the header", () => {
+  const { reveal, scroller, header, field, input, calls, cleanup } = setupStickyScroll();
   assert.equal(reveal(header), true);
   assert.equal(scroller.scrollTop, 0);
   assert.equal(reveal(input), true);
@@ -326,6 +334,16 @@ test("the native scroll adapter reveals whole fields and resets the panel when f
   assert.equal(field.getBoundingClientRect().bottom, 420);
   assert.equal(reveal({}), false);
   assert.deepEqual(calls, [{ top: 0, behavior: "instant" }, { top: 280, behavior: "instant" }]);
+  cleanup?.();
+});
+
+test("the final panel control reveals native trailing space without scrolling past its label", () => {
+  const { reveal, scroller, field, input, calls, cleanup } = setupStickyScroll(true);
+  assert.equal(reveal(input), true);
+  assert.equal(scroller.scrollTop, 338);
+  assert.equal(scroller.scrollTop, scroller.scrollHeight - scroller.clientHeight);
+  assert.equal(field.getBoundingClientRect().bottom, 362);
+  assert.deepEqual(calls, [{ top: 338, behavior: "instant" }]);
   cleanup?.();
 });
 

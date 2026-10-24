@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { bindScrollPadding, findScrollParent, revealScrollRegion } from "../src/lib/scrollRegion.ts";
+import { bindScrollPadding, findScrollParent, isLastFocusableRegion, revealScrollRegion } from "../src/lib/scrollRegion.ts";
 
 function focusRegion(scale = 1) {
   const calls: ScrollToOptions[] = [];
@@ -66,6 +66,57 @@ test("focus visibility uses transformed bounds without scaling the scroll distan
   revealScrollRegion(region.scroller, region.target(140), 140);
   assert.equal(region.scroller.scrollTop, 60);
   assert.equal(region.target(140).getBoundingClientRect().top, 140);
+});
+
+test("final fields reveal the native end including plugin and section padding", () => {
+  for (const scale of [1, 1.5]) {
+    const region = focusRegion(scale);
+    Object.defineProperty(region.scroller, "scrollHeight", { value: 738 });
+    const field = region.target(600);
+    revealScrollRegion(region.scroller, field, 20 + 80 * scale, true);
+    assert.deepEqual(region.calls, [{ top: 338, behavior: "instant" }]);
+    assert.equal(region.scroller.scrollTop, region.scroller.scrollHeight - region.scroller.clientHeight);
+    assert.ok(field.getBoundingClientRect().top >= 20 + 80 * scale);
+    const viewportBottom = 20 + 400 * scale;
+    assert.equal(viewportBottom - field.getBoundingClientRect().bottom, 58 * scale);
+  }
+});
+
+test("end scrolling does not hide a focused field behind the sticky header", () => {
+  const region = focusRegion();
+  Object.defineProperty(region.scroller, "scrollHeight", { value: 1600 });
+  const field = region.target(600);
+  revealScrollRegion(region.scroller, field, 100, true);
+  assert.equal(region.scroller.scrollTop, 520);
+  assert.equal(field.getBoundingClientRect().top, 100);
+  assert.ok(field.getBoundingClientRect().bottom <= 420);
+});
+
+test("an oversized final field retains its label rather than jumping to the document end", () => {
+  const region = focusRegion();
+  Object.defineProperty(region.scroller, "scrollHeight", { value: 1600 });
+  const field = region.target(500, 500);
+  revealScrollRegion(region.scroller, field, 100, true);
+  assert.equal(field.getBoundingClientRect().top, 100);
+  assert.equal(region.scroller.scrollTop, 420);
+});
+
+test("final-region detection follows visible native focus stops and includes disabled native buttons", () => {
+  const candidate = (options: { tabIndex?: number; disabled?: boolean; hidden?: boolean; visible?: boolean } = {}) => ({
+    tabIndex: options.tabIndex ?? 0,
+    matches: (selector: string) => selector === ":disabled" && !!options.disabled,
+    getClientRects: () => options.visible === false ? [] : [{}],
+    closest: () => options.hidden ? {} : null,
+  });
+  const first = candidate();
+  const last = candidate();
+  const ignored = [candidate({ tabIndex: -1 }), candidate({ disabled: true }), candidate({ hidden: true }), candidate({ visible: false })];
+  const container = { querySelectorAll: () => [first, last, ...ignored] } as unknown as HTMLElement;
+  const firstRegion = { contains: (target: unknown) => target === first } as HTMLElement;
+  const lastRegion = { contains: (target: unknown) => target === last } as HTMLElement;
+  assert.equal(isLastFocusableRegion(container, firstRegion), false);
+  assert.equal(isLastFocusableRegion(container, lastRegion), true);
+  assert.equal(isLastFocusableRegion({ querySelectorAll: () => ignored } as unknown as HTMLElement, lastRegion), false);
 });
 
 function setup() {

@@ -7,7 +7,18 @@ export function findScrollParent(element: HTMLElement): HTMLElement | null {
   return null;
 }
 
-export function revealScrollRegion(scroller: HTMLElement, target: HTMLElement, visibleTop: number) {
+export function isLastFocusableRegion(container: HTMLElement, region: HTMLElement): boolean {
+  const candidates = container.querySelectorAll<HTMLElement>("button, input, select, textarea, [tabindex]");
+  for (let index = candidates.length - 1; index >= 0; index--) {
+    const candidate = candidates[index];
+    if (candidate.tabIndex < 0 || candidate.matches(":disabled") || !candidate.getClientRects().length
+      || candidate.closest('[aria-hidden="true"], [inert]')) continue;
+    return region.contains(candidate);
+  }
+  return false;
+}
+
+export function revealScrollRegion(scroller: HTMLElement, target: HTMLElement, visibleTop: number, revealEnd = false) {
   const viewport = scroller.getBoundingClientRect();
   const bounds = target.getBoundingClientRect();
   const scale = (scroller.offsetHeight ? viewport.height / scroller.offsetHeight : 1) || 1;
@@ -16,6 +27,12 @@ export function revealScrollRegion(scroller: HTMLElement, target: HTMLElement, v
   let offset = scroller.scrollTop;
   if (bounds.top < top || bounds.height > bottom - top) offset += (bounds.top - top) / scale;
   else if (bounds.bottom > bottom) offset += (bounds.bottom - bottom) / scale;
+  // Show trailing native spacing without losing the focused label.
+  if (revealEnd && bounds.height <= bottom - top) {
+    const end = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const keepLabel = scroller.scrollTop + (bounds.top - top) / scale;
+    offset = Math.max(offset, Math.min(end, keepLabel));
+  }
   // Steam's smooth scroller cancels its old animation on an immediate scroll.
   scroller.scrollTo({ top: Math.max(0, offset), behavior: "instant" });
 }

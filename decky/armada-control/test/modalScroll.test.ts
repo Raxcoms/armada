@@ -144,6 +144,7 @@ test("visible modal fields still cancel a pending native scroll", () => {
 
 test("footer focus reveals the full horizontal action row rather than one button", () => {
   const { modal, boundary, add } = setup();
+  modal.scrollHeight = 764;
   const footer = add({ className: "armada-control-dialog-footer", top: 700, height: 64 });
   const button = add({ parent: footer, top: 715, height: 28 });
   assert.equal(reveal(boundary, button), true);
@@ -244,6 +245,7 @@ test("a nested confirmation scrolls only its own outer position", () => {
   const parent = new TestElement(document, { parent: parentPosition, className: "armada-control-dialog" });
   const parentBoundary = new TestElement(document, { parent });
   const position = new TestElement(document, { parent: parentBoundary, className: "armada-control-dialog-position", height: 300, overflow: "auto" });
+  position.scrollHeight = 660;
   const modal = new TestElement(document, { parent: position, className: "armada-control-dialog" });
   const boundary = new TestElement(document, { parent: modal });
   const footer = new TestElement(document, { parent: boundary, className: "armada-control-dialog-footer", top: 600, height: 60 });
@@ -254,4 +256,19 @@ test("a nested confirmation scrolls only its own outer position", () => {
   start(parentBoundary);
   assert.equal(position.scrollTop, 360);
   assert.deepEqual(parentPosition.calls, [{ top: 0, behavior: "instant" }]);
+});
+
+test("footer focus reveals the modal end beyond its native padding and margins", () => {
+  const { document, outside } = setup(1.5);
+  const position = new TestElement(document, { parent: outside, className: "armada-control-dialog-position", height: 400, overflow: "auto" });
+  position.scrollHeight = 832;
+  const modal = new TestElement(document, { parent: position, className: "armada-control-dialog", height: 808 });
+  const boundary = new TestElement(document, { parent: modal });
+  const footer = new TestElement(document, { parent: boundary, className: "armada-control-dialog-footer", top: 700, height: 80 });
+  const button = new TestElement(document, { parent: footer, top: 720, height: 40 });
+  assert.equal(reveal(boundary, button), true);
+  assert.equal(position.scrollTop, 432);
+  assert.equal(position.scrollTop, position.scrollHeight - position.clientHeight);
+  assert.ok(footer.getBoundingClientRect().bottom < position.getBoundingClientRect().bottom);
+  assert.deepEqual(outside.calls, []);
 });
