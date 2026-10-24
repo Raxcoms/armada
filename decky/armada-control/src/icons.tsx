@@ -4,6 +4,8 @@ function Icon({ path, size = 20 }: { path: ReactNode; size?: number }) {
   return (
     <svg
       className="armada-icon"
+      aria-hidden="true"
+      focusable="false"
       width={size}
       height={size}
       viewBox="0 0 24 24"
@@ -20,6 +22,21 @@ function Icon({ path, size = 20 }: { path: ReactNode; size?: number }) {
 
 const TAB_ICON_SIZE = 18;
 
+export const noticeIcons = {
+  information: (
+    <Icon size={TAB_ICON_SIZE} path={<>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v6m0-10h.01" />
+    </>} />
+  ),
+  warning: (
+    <Icon size={TAB_ICON_SIZE} path={<>
+      <path d="m10.3 3.9-8.1 14.1a2 2 0 0 0 1.7 3h16.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+      <path d="M12 9v4m0 4h.01" />
+    </>} />
+  ),
+};
+
 export const tabIcons = {
   Controller: (
     <Icon size={TAB_ICON_SIZE} path={<>
@@ -32,12 +49,7 @@ export const tabIcons = {
       <path d="M9 3h6m-5 0v7L4 20a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1l-6-10V3M7 15h10" />
     </>} />
   ),
-  About: (
-    <Icon size={TAB_ICON_SIZE} path={<>
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 11v6m0-10h.01" />
-    </>} />
-  ),
+  About: noticeIcons.information,
   Compatibility: (
     <Icon
       size={TAB_ICON_SIZE}

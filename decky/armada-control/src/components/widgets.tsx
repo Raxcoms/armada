@@ -2,6 +2,7 @@ import { ButtonItem, DialogButton, DropdownItem, Field, PanelSection, PanelSecti
 import type { ReactNode } from "react";
 import type { ButtonItemProps, DialogButtonProps, FieldProps } from "@decky/ui";
 import type { DropdownChoice } from "../types";
+import { noticeIcons } from "../icons";
 
 type Option = string | DropdownChoice;
 type Separator = "standard" | "thick" | "none";
@@ -22,9 +23,14 @@ export function SectionDescription({ children }: { children: ReactNode }) {
   return <SupportingText className="armada-section-description">{children}</SupportingText>;
 }
 
-export function NoticeSection({ title, children }: { title: ReactNode; children: ReactNode }) {
+export function Subsection({ title, children }: { title: ReactNode; children: ReactNode }) {
+  return <><div className="armada-subheader" role="heading" aria-level={3}>{title}</div>{children}</>;
+}
+
+export function NoticeSection({ title, children, kind = "information" }: { title: ReactNode; children: ReactNode; kind?: keyof typeof noticeIcons }) {
+  const label = <span className="armada-notice-title">{noticeIcons[kind]}<span>{title}</span></span>;
   return <PanelSection><ControlRow>
-    <Field className="armada-notice" label={title} description={children} bottomSeparator="none" focusable highlightOnFocus />
+    <Field className="armada-notice" label={label} description={children} bottomSeparator="none" focusable highlightOnFocus />
   </ControlRow></PanelSection>;
 }
 
@@ -75,8 +81,9 @@ export function ToggleRow({ label, value, onChange, disabled, description, botto
   </ControlRow>;
 }
 
-export function SliderEdit({ label, value, min, max, step, onChange, format, disabled, showValue = true, wrapperClassName, bottomSeparator = "standard" }: {
+export function SliderEdit({ label, description, value, min, max, step, onChange, format, disabled, showValue = true, wrapperClassName, bottomSeparator = "standard" }: {
   label: ReactNode;
+  description?: ReactNode;
   value: any;
   min: number;
   max: number;
@@ -94,6 +101,7 @@ export function SliderEdit({ label, value, min, max, step, onChange, format, dis
       className={wrapperClassName}
       bottomSeparator={bottomSeparator}
       label={label}
+      description={description}
       childrenContainerWidth="max"
       value={Number.isFinite(numeric) ? numeric : min}
       min={min}

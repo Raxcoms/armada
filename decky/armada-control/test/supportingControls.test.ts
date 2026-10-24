@@ -15,6 +15,7 @@ function widgets() {
   runInNewContext(compiled, { exports, require: (id: string) => {
     if (id === "@decky/ui") return Object.fromEntries(["ButtonItem", "DropdownItem", "Field", "PanelSectionRow", "SliderField", "ToggleField"].map((name) => [name, name]));
     if (id === "react/jsx-runtime") return { jsx: (type: unknown, props: unknown) => ({ type, props }) };
+    if (id === "../icons") return { noticeIcons: {} };
     throw Error(`Unexpected import: ${id}`);
   } });
   return exports;
@@ -63,6 +64,15 @@ test("selector supporting text uses the native dropdown description", () => {
   const description = { type: "span", props: { children: "Follow Steam's selection" } };
   const control = SelectEdit({ label: "Proton", description, value: "steam", options: ["steam"], onChange: () => {} }).props.children;
   assert.equal(control.type, "DropdownItem");
+  assert.equal(control.props.description, description);
+  assert.equal(control.props.bottomSeparator, "standard");
+});
+
+test("slider supporting text uses the native slider description", () => {
+  const { SliderEdit } = widgets();
+  const description = { type: "span", props: { children: "Priority details" } };
+  const control = SliderEdit({ label: "Priority", description, value: 0, min: -20, max: 19, step: 1, onChange: () => {} }).props.children;
+  assert.equal(control.type, "SliderField");
   assert.equal(control.props.description, description);
   assert.equal(control.props.bottomSeparator, "standard");
 });

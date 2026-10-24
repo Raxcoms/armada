@@ -3,6 +3,7 @@ import { theme } from "./theme";
 import { visualStyles } from "./components/visualStyles";
 import { tabNavigationStyles } from "./components/TabNavigation.styles";
 import { disabledButtonStyles } from "./components/buttonStyles";
+import { noticeStyles } from "./components/noticeStyles";
 
 // Steam has several section styles, so one class module may not match the rendered section.
 const sectionStyles = classMap
@@ -94,6 +95,7 @@ export const styles = `
       }
       ${sectionStyles}
       ${descriptionStyles}
+      ${noticeStyles}
       ${finalFieldStyles}
       .armada-control-tabs .armada-section-description.armada-supporting-text {
         padding-block-start: 0;

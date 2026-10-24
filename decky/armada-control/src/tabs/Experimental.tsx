@@ -96,7 +96,7 @@ export function Experimental({ config, setConfig }: {
 
   return (
     <>
-      <NoticeSection title={t("experimental.warningTitle")}>{t("experimental.warning")}</NoticeSection>
+      <NoticeSection kind="warning" title={t("experimental.warningTitle")}>{t("experimental.warning")}</NoticeSection>
       {config.bottomScreenSupported ? (
         <PanelSection title={t("experimental.dualScreenTitle")}>
           <SectionDescription>{t("experimental.dualScreenDescription")}</SectionDescription>
