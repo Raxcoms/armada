@@ -427,6 +427,40 @@ test("Fan Stop saves the selected curve with its minimum preserved across reopen
   assert.equal(reopened.control("SliderField", "fanCurve.minimumSpeed").value, fanCurve.pwmToPercent(40));
 });
 
+test("performance reset is a footer action and Cancel discards its draft", () => {
+  const app = setup();
+  app.power();
+  const footerActions = elements(app.control("ArmadaDialogFooter").children).filter((node) => node.type === "DialogButton");
+  assert.deepEqual(Array.from(footerActions, (node) => node.props.children), ["common.saveChanges", "common.cancel", "common.resetToDefault"]);
+  assert.equal(elements(app.control("DialogBody").children).some((node) => node.type === "DialogButton"), false);
+  app.control("DialogButton", "common.resetToDefault").onClick();
+  app.render();
+  assert.equal(app.control("Field", "power.cpuUnderclock").children.props.selectedOption, "none");
+  assert.equal(app.config.power.profiles.balanced.cpu_underclock, "small");
+  assert.equal(app.powerWrites.length, 0);
+  app.control("DialogButton", "common.cancel").onClick();
+  assert.equal(app.closed, 1);
+  assert.equal(app.powerWrites.length, 0);
+});
+
+test("performance reset persists only after Save and requires factory defaults", async () => {
+  const app = setup();
+  app.power();
+  app.control("DialogButton", "common.resetToDefault").onClick();
+  app.render();
+  app.control("DialogButton", "common.saveChanges").onClick();
+  app.render();
+  assert.equal(app.control("DialogButton", "common.resetToDefault").disabled, true);
+  await app.settle();
+  assert.equal(app.powerWrites.length, 1);
+  assert.equal(app.config.power.profiles.balanced.cpu_underclock, "none");
+  assert.equal(app.closed, 1);
+  const unavailable = setup();
+  unavailable.setConfig((current: any) => ({ ...current, powerDefaults: { profiles: {} } }));
+  unavailable.power();
+  assert.equal(unavailable.control("DialogButton", "common.resetToDefault").disabled, true);
+});
+
 test("performance Save merges newer profiles and preserves unrelated frontend state", async () => {
   const app = setup();
   app.power();

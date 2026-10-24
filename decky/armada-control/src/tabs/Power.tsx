@@ -75,12 +75,12 @@ export function PowerProfileEditorModal({ profileId, getLatestConfig, setConfig,
         <Field label={t("power.fanCurve")} bottomSeparator="standard" childrenLayout="below">
           <Dropdown selectedOption={profile.fan_curve} rgOptions={fanCurves} disabled={saving} onChange={(option) => setValue("fan_curve", String(option.data))} />
         </Field>
-        <DialogButton disabled={saving || !initial.powerDefaults?.profiles[profileId]} onClick={() => setProfile(clone(initial.powerDefaults.profiles[profileId]))}>{t("common.resetToDefault")}</DialogButton>
       </DialogControlsSection>
     </DialogBody>
     <ArmadaDialogFooter>
       <DialogButtonPrimary disabled={saving || !dirty} onClick={() => { void save(); }}>{saving ? t("common.saving") : t("common.saveChanges")}</DialogButtonPrimary>
       <DialogButton disabled={saving} onClick={cancel}>{t("common.cancel")}</DialogButton>
+      <DialogButton disabled={saving || !initial.powerDefaults?.profiles[profileId]} onClick={() => setProfile(clone(initial.powerDefaults.profiles[profileId]))}>{t("common.resetToDefault")}</DialogButton>
     </ArmadaDialogFooter>
   </ArmadaModalRoot>;
 }
