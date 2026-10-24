@@ -42,7 +42,8 @@ interface Frame {
 function allElements(tree: any): Element[] {
   if (Array.isArray(tree)) return tree.flatMap(allElements);
   if (!tree || typeof tree !== "object") return [];
-  return [tree, ...allElements(tree.rendered), ...allElements(tree.props?.children)];
+  const children = Object.prototype.hasOwnProperty.call(tree, "rendered") ? tree.rendered : tree.props?.children;
+  return [tree, ...allElements(children)];
 }
 
 function setup(overrides: Record<string, any> = {}, initialResolution = "Native") {
@@ -168,7 +169,12 @@ function setup(overrides: Record<string, any> = {}, initialResolution = "Native"
         modalEntries.push(entry);
         return entry;
       } };
-      if (id === "../components/widgets") return Object.fromEntries(["ButtonRow", "ControlRow", "NoticeSection", "SectionDescription", "SelectEdit", "SliderEdit", "SupportingText", "ToggleRow"].map((name) => [name, name]));
+      if (id === "../components/widgets") return {
+        ...Object.fromEntries(["ButtonRow", "ControlRow", "NoticeSection", "SectionDescription", "SelectEdit", "SliderEdit", "SupportingText", "ToggleRow"].map((name) => [name, name])),
+        Subsection: ({ title, children }: any) => element("Fragment", { children: [
+          element("div", { className: "armada-subheader", role: "heading", "aria-level": 3, children: title }), children,
+        ] }),
+      };
       if (id === "../components/ArmadaModalRoot") return { ArmadaModalRoot: "ArmadaModalRoot", ArmadaDialogHeader: "ArmadaDialogHeader", ArmadaDialogFooter: "ArmadaDialogFooter" };
       if (id === "../components/useModalView") return modalView;
       if (id === "../i18n") return {
@@ -361,9 +367,22 @@ test("CPU settings stay inline and environment sections are always expanded for 
   } });
   for (const appid of ["1", null]) {
     const nodes = allElements(app.editor(appid).rendered);
-    assert.equal(nodes.filter((node) => node.type === "SelectEdit" && node.props.label === "compatibility.cpuCores").length, 1);
+    assert.equal(nodes.filter((node) => node.type === "SelectEdit" && node.props.label === "compatibility.gameCpuCores").length, 1);
     assert.ok(app.control(appid, "ToggleRow", "compatibility.wineCpuTopology"));
-    assert.ok(nodes.some((node) => node.type === "PanelSection" && node.props.title === "compatibility.environment"));
+    const main = nodes.find((node) => node.type === "PanelSection"
+      && allElements(node).some((child) => child.type === "SelectEdit" && child.props.label === "compatibility.gameCpuCores"));
+    assert.ok(main);
+    const contents = allElements(main);
+    const headings = contents.filter((node) => node.props.className === "armada-subheader"
+      && ["profiles.cpuSettings", "compatibility.fexSettings", "compatibility.environment", "compatibility.advanced"].includes(node.props.children)).map((node) => node.props.children);
+    assert.deepEqual(Array.from(headings), ["profiles.cpuSettings", "compatibility.environment", "compatibility.advanced"]);
+    assert.equal(nodes.some((node) => node.type === "PanelSection" && node.props.title === "compatibility.environment"), false);
+    assert.ok(contents.some((node) => node.type === "ButtonRow" && node.props.children === "compatibility.addCustomVariable"));
+    const buttons = contents.filter((node) => node.type === "ButtonRow");
+    assert.deepEqual(Array.from(buttons.slice(-2), (node) => node.props.children), [
+      "compatibility.advancedSettings", appid ? "common.resetToDefault" : "compatibility.resetAllGames",
+    ]);
+    assert.equal(app.control(appid, "ToggleRow", "compatibility.wineCpuTopology").props.description, "compatibility.wineCpuTopologyDescription");
     assert.ok(app.control(appid, "ButtonRow", "compatibility.addCustomVariable"));
     assert.equal(nodes.filter((node) => node.type === "ButtonRow" && node.props.children === "compatibility.advancedSettings").length, 1);
     for (const label of ["options.performance", "compatibility.hostThunks", "compatibility.environment", "compatibility.drivers"]) {
@@ -373,7 +392,7 @@ test("CPU settings stay inline and environment sections are always expanded for 
   assert.ok(app.control("1", "ToggleRow", "GLOBAL_OPTION=1"));
   app.control("1", "ToggleRow", "compatibility.wineCpuTopology").props.onChange(true);
   app.render();
-  app.control(null, "SelectEdit", "compatibility.cpuCores").props.onChange("all");
+  app.control(null, "SelectEdit", "compatibility.gameCpuCores").props.onChange("all");
   assert.equal(app.config.tweaks.games["1"].cores, "0-1");
   assert.equal(app.config.tweaks.games["1"].wineTopology, true);
   assert.equal(app.config.tweaks.global.cores, "all");
@@ -382,6 +401,26 @@ test("CPU settings stay inline and environment sections are always expanded for 
   assert.equal(defaultButtons.at(-1)?.props.children, "compatibility.resetAllGames");
 });
 
+test("custom FEX settings stay between their selector and the environment subsection", () => {
+  const app = setup({ tweaks: {
+    global: { windowsCompatTool: FOLLOW_STEAM_COMPAT, fexProfile: "default" },
+    games: { "1": { enabled: true, fexProfile: "custom", fexConfig: { Multiblock: "1" } } },
+  } });
+  const nodes = allElements(app.editor("1").rendered);
+  const headings = nodes.filter((node) => node.props.className === "armada-subheader");
+  assert.deepEqual(Array.from(headings, (node) => node.props.children), [
+    "compatibility.fexSettings", "profiles.cpuSettings", "compatibility.environment", "compatibility.advanced",
+  ]);
+  const selector = app.control("1", "SelectEdit", "compatibility.fexPreset");
+  assert.ok(nodes.indexOf(selector) < nodes.indexOf(headings[0]));
+  const fexSettings = nodes.find((node) => typeof node.type === "function" && node.props.title === "compatibility.fexSettings");
+  assert.ok(fexSettings);
+  assert.ok(allElements(fexSettings).some((node) => node.type === "ToggleRow"));
+  selector.props.onChange("default");
+  app.render();
+  assert.equal(allElements(app.editor("1").rendered).some((node) => node.props.className === "armada-subheader"
+    && node.props.children === "compatibility.fexSettings"), false);
+});
 test("an open environment editor merges newer variables into its original game target", () => {
   const app = setup({ tweaks: {
     global: { windowsCompatTool: FOLLOW_STEAM_COMPAT },
@@ -411,8 +450,8 @@ test("Advanced opens expanded sections with conditional drivers and target-speci
   app.render();
   const nodes = app.modalElements();
   const sectionTitles = nodes.filter((node) => node.type === "DialogControlsSectionHeader").map((node) => node.props.children);
-  assert.deepEqual(Array.from(sectionTitles), ["options.performance", "compatibility.hostThunks", "compatibility.drivers"]);
-  assert.equal(nodes.filter((node) => node.type === "SelectEdit" && node.props.label === "compatibility.cpuCores").length, 1);
+  assert.deepEqual(Array.from(sectionTitles), ["options.performance", "compatibility.drivers", "compatibility.hostThunks"]);
+  assert.equal(nodes.filter((node) => node.type === "SelectEdit" && node.props.label === "compatibility.gamescopeCpuCores").length, 1);
   assert.equal(nodes.some((node) => node.type === "ToggleRow" && node.props.label === "compatibility.wineCpuTopology"), false);
   assert.equal(nodes.some((node) => node.type === "ToggleRow" && node.props.label === "compatibility.vulkanRealtimeQueue"), false);
   assert.ok(app.modalControl("ToggleRow", "Host Vulkan"));
@@ -427,6 +466,20 @@ test("Advanced opens expanded sections with conditional drivers and target-speci
   app.control(null, "ButtonRow", "compatibility.advancedSettings").props.onClick();
   app.render();
   assert.ok(app.modalControl("ToggleRow", "compatibility.vulkanRealtimeQueue"));
+  const performanceSection = app.modalElements().find((node) => node.type === "DialogControlsSection"
+    && allElements(node).some((child) => child.type === "DialogControlsSectionHeader" && child.props.children === "options.performance"));
+  const performanceControls = allElements(performanceSection);
+  assert.equal(performanceControls.some((node) => node.props.className === "armada-subheader"), false);
+  assert.equal(performanceControls.some((node) => node.type === "SelectEdit" && node.props.label === "compatibility.gameCpuCores"), false);
+  assert.ok(app.modalControl("SelectEdit", "compatibility.gamescopeCpuCores"));
+  for (const label of ["compatibility.gameProcessPriority", "compatibility.gamescopeProcessPriority"]) {
+    assert.equal(app.modalControl("SliderEdit", label).props.description, "compatibility.processPriorityDescription");
+  }
+  const controls = performanceControls.filter((node) => ["SelectEdit", "SliderEdit", "ToggleRow"].includes(String(node.type)));
+  assert.deepEqual(Array.from(controls, (node) => node.props.label), [
+    "compatibility.gameProcessPriority", "compatibility.gamescopeProcessPriority",
+    "compatibility.gamescopeCpuCores", "compatibility.cpuScheduler", "compatibility.vulkanRealtimeQueue",
+  ]);
   assert.equal(app.modalElements().some((node) => node.props.children === "compatibility.reapplyRunningGame"), false);
   app.select("2");
   assert.equal(app.modalOpen(), true);
@@ -458,19 +511,19 @@ test("Advanced keeps consecutive edits isolated until Save and preserves unrelat
   assert.equal(app.config.tweaks.games["2"].nice, -4);
   assert.equal(app.config.tweaks.global.fexProfile, "fast");
   assert.equal(app.config.sshEnabled, true);
-  app.modalControl("SelectEdit", "compatibility.cpuCores").props.onChange("custom");
+  app.modalControl("SelectEdit", "compatibility.gamescopeCpuCores").props.onChange("custom");
   app.render();
   app.modalControl("TextField", "compatibility.customCores").props.onChange({ target: { value: "0-1" } });
   app.render();
   assert.equal(app.config.tweaks.games["1"].gamescopeCores, undefined);
-  app.modalControl("SelectEdit", "compatibility.cpuCores").props.onChange("all");
+  app.modalControl("SelectEdit", "compatibility.gamescopeCpuCores").props.onChange("all");
   app.render();
-  app.modalControl("SelectEdit", "compatibility.cpuCores").props.onChange("custom");
+  app.modalControl("SelectEdit", "compatibility.gamescopeCpuCores").props.onChange("custom");
   app.render();
   assert.equal(app.modalControl("TextField", "compatibility.customCores").props.value, "");
   assert.equal(app.modalControl("DialogButton", "common.saveChanges").props.disabled, true);
   assert.ok(app.modalElements().some((node) => node.type === "SupportingText" && node.props.children === "compatibility.enterCores"));
-  app.modalControl("SelectEdit", "compatibility.cpuCores").props.onChange("all");
+  app.modalControl("SelectEdit", "compatibility.gamescopeCpuCores").props.onChange("all");
   app.render();
   app.modalControl("DialogButton", "common.saveChanges").props.onClick();
   await app.settle();

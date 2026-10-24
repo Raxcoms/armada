@@ -13,7 +13,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { getCompatMappedAppids, reapplyPerf, restartGameMode, saveCompatApplied } from "../backend";
-import { ButtonRow, ControlRow, NoticeSection, SectionDescription, SelectEdit, SliderEdit, SupportingText, ToggleRow } from "../components/widgets";
+import { ButtonRow, ControlRow, NoticeSection, SectionDescription, SelectEdit, SliderEdit, Subsection, SupportingText, ToggleRow } from "../components/widgets";
 import { ArmadaDialogFooter, ArmadaDialogHeader, ArmadaModalRoot } from "../components/ArmadaModalRoot";
 import { useModalView } from "../components/useModalView";
 import { getCurrentLocale, t, translateLabel } from "../i18n";
@@ -877,7 +877,7 @@ function CompatibilitySettings({ config, setConfig, saveTweaksNow, tweaksRef, ga
   };
   const cpuControls = (
     <>
-      <SelectEdit label={t("compatibility.cpuCores")} value={coresIsCustom ? "custom" : coresValue} options={coreOptions} onChange={onSelectCores} />
+      <SelectEdit label={t("compatibility.gameCpuCores")} value={coresIsCustom ? "custom" : coresValue} options={coreOptions} onChange={onSelectCores} />
       {coresIsCustom ? (
         <ControlRow>
           <TextField
@@ -896,6 +896,7 @@ function CompatibilitySettings({ config, setConfig, saveTweaksNow, tweaksRef, ga
       {coresValue ? (
         <ToggleRow
           label={t("compatibility.wineCpuTopology")}
+          description={t("compatibility.wineCpuTopologyDescription")}
           value={values.wineTopology !== false}
           onChange={(on) => patchSettings({ wineTopology: on })}
         />
@@ -904,11 +905,24 @@ function CompatibilitySettings({ config, setConfig, saveTweaksNow, tweaksRef, ga
   );
   const perfControls = (
     <>
-      <div className="armada-subheader">{t("compatibility.game")}</div>
-      <SliderEdit label={t("compatibility.nice")} value={advancedValues.nice ?? 0} min={-20} max={19} step={1} disabled={advancedSaving} onChange={(v) => patchAdvanced({ nice: v })} />
-      <div className="armada-subheader">{t("compatibility.gamescope")}</div>
+      <SliderEdit
+        label={t("compatibility.gameProcessPriority")}
+        description={t("compatibility.processPriorityDescription")}
+        value={advancedValues.nice ?? 0}
+        min={-20} max={19} step={1}
+        disabled={advancedSaving}
+        onChange={(v) => patchAdvanced({ nice: v })}
+      />
+      <SliderEdit
+        label={t("compatibility.gamescopeProcessPriority")}
+        description={t("compatibility.processPriorityDescription")}
+        value={advancedValues.gamescopeNice ?? 0}
+        min={-20} max={19} step={1}
+        disabled={advancedSaving}
+        onChange={(v) => patchAdvanced({ gamescopeNice: v })}
+      />
       <SelectEdit
-        label={t("compatibility.cpuCores")}
+        label={t("compatibility.gamescopeCpuCores")}
         value={gsCoresIsCustom ? "custom" : gsCoresValue}
         options={gamescopeCoreOptions}
         disabled={advancedSaving}
@@ -938,7 +952,13 @@ function CompatibilitySettings({ config, setConfig, saveTweaksNow, tweaksRef, ga
         </ControlRow>
       ) : null}
       {gsCoresError ? <SupportingText className="armada-note-error">{gsCoresError}</SupportingText> : null}
-      <SliderEdit label={t("compatibility.nice")} value={advancedValues.gamescopeNice ?? 0} min={-20} max={19} step={1} disabled={advancedSaving} onChange={(v) => patchAdvanced({ gamescopeNice: v })} />
+      <SelectEdit
+        label={t("compatibility.cpuScheduler")}
+        value={String(advancedValues.scheduler ?? "")}
+        options={schedulerOptions}
+        disabled={advancedSaving}
+        onChange={(v) => patchAdvanced({ scheduler: String(v) || undefined })}
+      />
       {editingDefault ? (
         <ToggleRow
           label={t("compatibility.vulkanRealtimeQueue")}
@@ -947,33 +967,12 @@ function CompatibilitySettings({ config, setConfig, saveTweaksNow, tweaksRef, ga
           onChange={(enabled) => patchAdvanced({ gamescopeVulkanRealtime: enabled })}
         />
       ) : null}
-      <div className="armada-subheader">{t("settings.system")}</div>
-      <SelectEdit
-        label={t("compatibility.cpuScheduler")}
-        value={String(advancedValues.scheduler ?? "")}
-        options={schedulerOptions}
-        disabled={advancedSaving}
-        onChange={(v) => patchAdvanced({ scheduler: String(v) || undefined })}
-      />
     </>
   );
   const inheritedEnvEntries = Object.entries(globalEnv).filter(([key]) => typeof ownEnv[key] !== "string");
   const ownEnvEntries = Object.entries(ownEnv).filter(([, value]) => typeof value === "string") as [string, string][];
-  const envControls = (
+  const ownEnvControls = (
     <>
-      {inheritedEnvEntries.length ? <div className="armada-subheader">{t("compatibility.defaultVariables")}</div> : null}
-      {inheritedEnvEntries.map(([key, value]) => (
-        <ToggleRow
-          key={key}
-          label={String(value) ? `${key}=${String(value)}` : key}
-          value={ownEnv[key] !== null}
-          onChange={(on) => patchOwnEnv((next) => {
-            if (on) delete next[key];
-            else next[key] = null;
-          })}
-        />
-      ))}
-      {inheritedEnvEntries.length ? <div className="armada-subheader">{t("compatibility.perGameVariables")}</div> : null}
       {ownEnvEntries.map(([key, value]) => (
         <ButtonRow key={key} layout="below" onClick={() => openEnvVar(key)}>
           <div className="armada-truncated-label">
@@ -991,6 +990,24 @@ function CompatibilitySettings({ config, setConfig, saveTweaksNow, tweaksRef, ga
       </ButtonRow>
     </>
   );
+  const envControls = inheritedEnvEntries.length ? (
+    <>
+      <Subsection title={t("compatibility.defaultVariables")}>
+        {inheritedEnvEntries.map(([key, value]) => (
+          <ToggleRow
+            key={key}
+            label={String(value) ? `${key}=${String(value)}` : key}
+            value={ownEnv[key] !== null}
+            onChange={(on) => patchOwnEnv((next) => {
+              if (on) delete next[key];
+              else next[key] = null;
+            })}
+          />
+        ))}
+      </Subsection>
+      <Subsection title={t("compatibility.perGameVariables")}>{ownEnvControls}</Subsection>
+    </>
+  ) : ownEnvControls;
 
   const closeAdvanced = () => {
     if (advancedBusy.current) return;
@@ -1040,12 +1057,6 @@ function CompatibilitySettings({ config, setConfig, saveTweaksNow, tweaksRef, ga
           <DialogControlsSectionHeader>{t("options.performance")}</DialogControlsSectionHeader>
           {perfControls}
         </DialogControlsSection>
-        <DialogControlsSection>
-          <DialogControlsSectionHeader>{t("compatibility.hostThunks")}</DialogControlsSectionHeader>
-          {thunkModules.map((thunk) => (
-            <ToggleRow key={thunk.module} label={translateLabel(thunk.label)} value={thunks[thunk.module] !== false} disabled={advancedSaving} onChange={(value) => setThunk(thunk.module, value)} />
-          ))}
-        </DialogControlsSection>
         {turnipDrivers.length > 1 ? (
           <DialogControlsSection>
             <DialogControlsSectionHeader>{t("compatibility.drivers")}</DialogControlsSectionHeader>
@@ -1053,6 +1064,12 @@ function CompatibilitySettings({ config, setConfig, saveTweaksNow, tweaksRef, ga
               description={turnipValue ? t(turnipValue.startsWith("user:") ? "compatibility.turnipUserNote" : "compatibility.turnipBuiltinNote") : undefined} />
           </DialogControlsSection>
         ) : null}
+        <DialogControlsSection>
+          <DialogControlsSectionHeader>{t("compatibility.hostThunks")}</DialogControlsSectionHeader>
+          {thunkModules.map((thunk) => (
+            <ToggleRow key={thunk.module} label={translateLabel(thunk.label)} value={thunks[thunk.module] !== false} disabled={advancedSaving} onChange={(value) => setThunk(thunk.module, value)} />
+          ))}
+        </DialogControlsSection>
         {reapplyStatus ? <Field label={t("common.status")} description={reapplyStatus} bottomSeparator="none" /> : null}
       </DialogBody>
       <ArmadaDialogFooter>
@@ -1105,72 +1122,67 @@ function CompatibilitySettings({ config, setConfig, saveTweaksNow, tweaksRef, ga
         </PanelSection>
       ) : null}
       {profileMessage ? <SupportingText className="armada-note-error">{profileMessage}</SupportingText> : null}
-      {profileEnabled && !switchingProfile ? <>
-      <PanelSection>
-        {editingDefault ? (
-          <>
-            <SelectEdit
-              label={t("compatibility.defaultProton")}
-              value={globalTool || activeGlobalTool}
-              options={toolOptions}
-              onChange={onSelectGlobalDefault}
-              disabled={switchingDefault}
-              placeholder={globalToolMissing ? t("compatibility.chooseProton") : undefined}
-              description={globalToolMissing
-                ? <span className="armada-note-error">{t("compatibility.missingTool", { tool: globalTool })}</span>
-                : activeGlobalTool === FOLLOW_STEAM_COMPAT ? t("compatibility.followSteamDescription") : undefined}
-            />
-            {activeGlobalTool !== FOLLOW_STEAM_COMPAT ? (
-              <ToggleRow
-                label={t("compatibility.applyToNewGames")}
-                value={tweaks.global.autoApplyCompat !== false}
-                onChange={(enabled) => {
-                  setAutoApplyCompat(enabled);
-                  patchSettings({ autoApplyCompat: enabled });
-                }}
+      {profileEnabled && !switchingProfile ? (
+        <PanelSection>
+          {editingDefault ? (
+            <>
+              <SelectEdit
+                label={t("compatibility.defaultProton")}
+                value={globalTool || activeGlobalTool}
+                options={toolOptions}
+                onChange={onSelectGlobalDefault}
+                disabled={switchingDefault}
+                placeholder={globalToolMissing ? t("compatibility.chooseProton") : undefined}
+                description={globalToolMissing
+                  ? <span className="armada-note-error">{t("compatibility.missingTool", { tool: globalTool })}</span>
+                  : activeGlobalTool === FOLLOW_STEAM_COMPAT ? t("compatibility.followSteamDescription") : undefined}
               />
-            ) : null}
-            <SelectEdit label={t("compatibility.gameResolution")} value={defaultResolution} options={resolutionOptions.map((option) => ({ ...option, label: translateLabel(option.label) }))} onChange={setSteamDefaultResolution} />
-          </>
-        ) : (
-          <>
-            <SelectEdit label={t("compatibility.tool")} value={currentTool} options={perGameToolOptions} onChange={onSelectPerGameTool} />
-            <SelectEdit label={t("compatibility.gameResolution")} value={resolution} options={resolutionOptions.map((option) => ({
-              ...option,
-              label: option.data === "Default"
-                ? t("gameSettings.inherit", { value: defaultResolutionLabel })
-                : translateLabel(option.label),
-            }))} onChange={setSteamResolution} />
-          </>
-        )}
-        {resolutionMessage ? <Field className="armada-note-error" label={t("common.status")} description={resolutionMessage} bottomSeparator="none" /> : null}
-        {cpuControls}
-        <SelectEdit label={t("compatibility.fexPreset")} value={inheritedFex ? "" : fexValue} options={fexOptions} onChange={onSelectFex} />
-        {isCustom
-          ? fexKnobs.map((knob) => (
-              <ToggleRow key={knob.key} label={translateLabel(knob.label)} value={fexConfig[knob.key] === "1"} onChange={(value) => setKnob(knob.key, value)} />
-            ))
-          : null}
-      </PanelSection>
-      <PanelSection title={t("compatibility.environment")}>
-        {envControls}
-      </PanelSection>
-      <PanelSection>
-        <ButtonRow layout="below" onClick={openAdvanced}>{t("compatibility.advancedSettings")}</ButtonRow>
-      </PanelSection>
-      </> : null}
-      {!editingDefault && profileEnabled && !switchingProfile ? (
-        <PanelSection>
-          <ButtonRow layout="below" disabled={!!resetting || changingProfile} onClick={confirmResetGame}>
-            {resettingGame ? t("common.resetting") : t("common.resetToDefault")}
-          </ButtonRow>
-        </PanelSection>
-      ) : null}
-      {editingDefault ? (
-        <PanelSection>
-          <ButtonRow layout="below" disabled={!!resetting || changingProfile} onClick={confirmResetAllGames}>
-            {resettingAll ? t("common.resetting") : t("compatibility.resetAllGames")}
-          </ButtonRow>
+              {activeGlobalTool !== FOLLOW_STEAM_COMPAT ? (
+                <ToggleRow
+                  label={t("compatibility.applyToNewGames")}
+                  value={tweaks.global.autoApplyCompat !== false}
+                  onChange={(enabled) => {
+                    setAutoApplyCompat(enabled);
+                    patchSettings({ autoApplyCompat: enabled });
+                  }}
+                />
+              ) : null}
+              <SelectEdit label={t("compatibility.gameResolution")} value={defaultResolution} options={resolutionOptions.map((option) => ({ ...option, label: translateLabel(option.label) }))} onChange={setSteamDefaultResolution} />
+            </>
+          ) : (
+            <>
+              <SelectEdit label={t("compatibility.tool")} value={currentTool} options={perGameToolOptions} onChange={onSelectPerGameTool} />
+              <SelectEdit label={t("compatibility.gameResolution")} value={resolution} options={resolutionOptions.map((option) => ({
+                ...option,
+                label: option.data === "Default"
+                  ? t("gameSettings.inherit", { value: defaultResolutionLabel })
+                  : translateLabel(option.label),
+              }))} onChange={setSteamResolution} />
+            </>
+          )}
+          {resolutionMessage ? <Field className="armada-note-error" label={t("common.status")} description={resolutionMessage} bottomSeparator="none" /> : null}
+          <SelectEdit label={t("compatibility.fexPreset")} value={inheritedFex ? "" : fexValue} options={fexOptions} onChange={onSelectFex} />
+          {isCustom ? (
+            <Subsection title={t("compatibility.fexSettings")}>
+              {fexKnobs.map((knob) => (
+                <ToggleRow key={knob.key} label={translateLabel(knob.label)} value={fexConfig[knob.key] === "1"} onChange={(value) => setKnob(knob.key, value)} />
+              ))}
+            </Subsection>
+          ) : null}
+          <Subsection title={t("profiles.cpuSettings")}>{cpuControls}</Subsection>
+          <Subsection title={t("compatibility.environment")}>{envControls}</Subsection>
+          <Subsection title={t("compatibility.advanced")}>
+            <ButtonRow layout="below" onClick={openAdvanced}>{t("compatibility.advancedSettings")}</ButtonRow>
+            {editingDefault ? (
+              <ButtonRow layout="below" disabled={!!resetting || changingProfile} onClick={confirmResetAllGames}>
+                {resettingAll ? t("common.resetting") : t("compatibility.resetAllGames")}
+              </ButtonRow>
+            ) : (
+              <ButtonRow layout="below" disabled={!!resetting || changingProfile} onClick={confirmResetGame}>
+                {resettingGame ? t("common.resetting") : t("common.resetToDefault")}
+              </ButtonRow>
+            )}
+          </Subsection>
         </PanelSection>
       ) : null}
     </>
