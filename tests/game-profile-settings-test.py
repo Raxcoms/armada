@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parent.parent
 LIB = ROOT / "system_files/usr/lib/armada"
@@ -100,6 +100,42 @@ class GameProfileSettingsTest(unittest.TestCase):
         saved = self.save(saved)
         self.assertEqual(saved["games"], {})
         self.assertEqual(saved["global"], self.global_settings)
+
+    def test_factory_defaults_exclude_overrides_and_return_fresh_values(self):
+        self.overrides.write_text(json.dumps({"global": {"nice": -10}, "games": {"620": self.game}}))
+        defaults = plugin_tweaks.load_tweak_defaults()
+        self.assertEqual(defaults, {"global": self.global_settings, "games": {}})
+        self.assertEqual(plugin_tweaks.load_tweaks()["global"]["nice"], -10)
+        defaults["global"]["thunks"]["Vulkan"] = False
+        self.assertEqual(plugin_tweaks.load_tweak_defaults()["global"], self.global_settings)
+
+    def test_missing_or_legacy_factory_defaults_stay_normalized(self):
+        self.defaults.write_text(json.dumps({"global": {"nice": -4}}))
+        self.assertEqual(plugin_tweaks.load_tweak_defaults(), {"global": {"nice": -4}, "games": {}})
+        self.defaults.unlink()
+        self.assertEqual(plugin_tweaks.load_tweak_defaults(), {"global": {}, "games": {}})
+
+    @unittest.skipIf(os.name == "nt", "plugin config imports Linux controller support")
+    def test_config_exposes_factory_defaults_separately_from_current_settings(self):
+        from armada_control import config
+
+        self.overrides.write_text(json.dumps({"global": {"nice": -10}, "games": {"620": self.game}}))
+        probes = {
+            "load_fex_contract": {"profiles": {}}, "device_env": {},
+            "bottom_screen_brightness": None, "parse_power": {"fan": {}},
+            "factory_power_defaults": {}, "turnip_drivers": [], "load_env_presets": [],
+            "perf_info": {}, "rgb_supported": False, "os_version": "test",
+            "abl_version": "test", "bottom_screen_enabled": False,
+            "bottom_screen_active": False, "ssh_enabled": False,
+            "swipe_gestures_enabled": False, "mtp_enabled": False,
+            "desktop_mode": "", "desktop_modes": [], "sleep_modes": [],
+            "controller_type": "", "calibrated_at": None, "inputplumber_targets": [],
+        }
+        with patch.multiple(config, **{name: Mock(return_value=value) for name, value in probes.items()}):
+            result = config.build_config(include_games=False)
+        self.assertEqual(result["tweaksDefaults"], {"global": self.global_settings, "games": {}})
+        self.assertEqual(result["tweaks"]["global"]["nice"], -10)
+        self.assertEqual(result["tweaks"]["games"]["620"], self.game)
 
 
 if __name__ == "__main__":

@@ -61,6 +61,10 @@ def load_tweaks():
     return armada_game_tweaks.load()
 
 
+def load_tweak_defaults():
+    return armada_game_tweaks.load_defaults()
+
+
 def sanitize_tweaks(data):
     if not isinstance(data, dict):
         raise ValueError("tweaks must be an object")
@@ -80,7 +84,7 @@ def sanitize_tweaks(data):
 def tweak_overrides(data):
     clean = sanitize_tweaks(data)
     return armada_game_tweaks.remove_factory_values(
-        clean, armada_game_tweaks.load_defaults())
+        clean, load_tweak_defaults())
 
 
 def save_tweaks(data):

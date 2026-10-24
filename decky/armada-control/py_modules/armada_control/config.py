@@ -22,6 +22,7 @@ from .tweaks import (
     fex_profile_labels,
     load_env_presets,
     load_fex_contract,
+    load_tweak_defaults,
     load_tweaks,
     turnip_drivers,
 )
@@ -36,6 +37,7 @@ def build_config(include_games=True):
         "power": power,
         "powerDefaults": factory_power_defaults(),
         "tweaks": load_tweaks(),
+        "tweaksDefaults": load_tweak_defaults(),
         "installedGames": installed_games() if include_games else [],
         "fexProfiles": fex_profile_labels(fex_contract),
         "turnipDrivers": turnip_drivers(),

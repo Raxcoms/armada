@@ -144,6 +144,7 @@ export interface Config {
   power: PowerConfig;
   powerDefaults: PowerConfig;
   tweaks: Tweaks;
+  tweaksDefaults?: Tweaks;
   installedGames: InstalledGame[];
   fexProfiles: Record<string, FexProfile>;
   turnipDrivers?: TurnipDriver[];
