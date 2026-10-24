@@ -48,6 +48,7 @@ test("selectable notices put the title and description in one full-width native 
   const description = row.props.children;
   assert.equal(description.type, "NativeField");
   assert.equal(description.props.label, title);
+  assert.equal(description.props.className, "armada-notice");
   assert.equal(description.props.description, text);
   assert.equal(description.props.focusable, true);
   assert.equal(description.props.highlightOnFocus, true);

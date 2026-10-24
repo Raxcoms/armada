@@ -24,7 +24,7 @@ export function SectionDescription({ children }: { children: ReactNode }) {
 
 export function NoticeSection({ title, children }: { title: ReactNode; children: ReactNode }) {
   return <PanelSection><ControlRow>
-    <Field label={title} description={children} bottomSeparator="none" focusable highlightOnFocus />
+    <Field className="armada-notice" label={title} description={children} bottomSeparator="none" focusable highlightOnFocus />
   </ControlRow></PanelSection>;
 }
 

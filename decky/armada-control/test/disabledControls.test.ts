@@ -10,18 +10,24 @@ const readSource = (path: string) => readFileSync(new URL(path, sourceRoot), "ut
 const compile = (source: string) => ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
+const buttonExports: any = {};
+runInNewContext(compile(readSource("components/buttonStyles.ts")), { exports: buttonExports, require: (id: string) => {
+  if (id === "../theme") return { theme };
+  throw new Error(`Unexpected button style import: ${id}`);
+} });
 const styleExports: any = {};
 runInNewContext(compile(readSource("styles.ts")), { exports: styleExports, require: (id: string) => {
   if (id === "@decky/ui") return { classMap: [], gamepadSliderClasses: { SliderTrack: "native-slider-track" } };
   if (id === "./theme") return { theme };
   if (id === "./components/visualStyles") return { visualStyles: "" };
   if (id === "./components/TabNavigation.styles") return { tabNavigationStyles: "" };
+  if (id === "./components/buttonStyles") return buttonExports;
   throw new Error(`Unexpected style import: ${id}`);
 } });
 const styles: string = styleExports.styles;
 const rules = [...styles.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({ selector: match[1].trim(), declarations: match[2] }));
 const disabledRule = rules.find((rule) => rule.selector.endsWith("button.DialogButton:is(.Disabled, :disabled)"));
-const focusedRule = rules.find((rule) => rule.selector.endsWith("button.DialogButton:is(.Disabled, :disabled):is(.gpfocus, :focus-visible)"));
+const focusedRule = rules.find((rule) => rule.selector.endsWith("button.DialogButton:is(.Disabled, :disabled):is(.gpfocus, :focus-visible, :hover)"));
 
 test("native class-disabled and attribute-disabled buttons share appearance in every plugin container", () => {
   assert.ok(disabledRule);
@@ -38,21 +44,26 @@ test("native class-disabled and attribute-disabled buttons share appearance in e
   assert.doesNotMatch(disabledRule.declarations, /pointer-events:|display:|width:|height:|padding:|transform:/);
 });
 
-test("disabled native buttons retain a visible keyboard and controller focus indicator", () => {
+test("disabled buttons use a lighter selected surface without a hover or focus outline", () => {
   assert.ok(disabledRule);
   assert.ok(focusedRule);
-  assert.equal(focusedRule.selector.replace(":is(.gpfocus, :focus-visible)", ""), disabledRule.selector);
-  assert.ok(focusedRule.declarations.includes(`outline: ${theme.focusRingWidth} solid ${theme.disabledText};`));
-  assert.ok(focusedRule.declarations.includes(`outline-offset: calc(-1 * ${theme.focusRingWidth});`));
-  assert.doesNotMatch(focusedRule.declarations, /outline:\s*(none|0)[;\s]/);
+  assert.equal(focusedRule.selector.replace(":is(.gpfocus, :focus-visible, :hover)", ""), disabledRule.selector);
+  assert.ok(focusedRule.declarations.includes(`background: ${theme.disabledSelectedSurface};`));
+  assert.ok(focusedRule.declarations.includes(`color: ${theme.disabledText};`));
+  for (const rule of [disabledRule, focusedRule]) {
+    assert.match(rule.declarations, /outline:\s*none;/);
+    assert.match(rule.declarations, /box-shadow:\s*none;/);
+    assert.doesNotMatch(rule.declarations, /outline-offset:/);
+  }
 });
 
 test("disabled appearance follows shared configuration tokens without inline or important overrides", () => {
   assert.match(theme.disabledText, /^var\(--armada-theme-disabled-text,/);
   assert.match(theme.disabledSurface, /^var\(--armada-theme-disabled-surface,/);
+  assert.match(theme.disabledText, /#7a838d\)$/);
+  assert.match(theme.disabledSelectedSurface, /^var\(--armada-theme-disabled-selected-surface,/);
   assert.match(theme.disabledOpacity, /^var\(--armada-disabled-opacity,/);
-  assert.match(theme.focusRingWidth, /^var\(--armada-focus-ring-width,/);
-  for (const path of ["styles.ts", "theme.ts", "components/widgets.tsx"]) {
+  for (const path of ["styles.ts", "theme.ts", "components/widgets.tsx", "components/buttonStyles.ts"]) {
     assert.doesNotMatch(readSource(path), /!\s*important|\bstyle=\{/i, path);
   }
   const graphRule = rules.find((rule) => rule.selector === '.afc-scope .afc-graph-focusable[aria-disabled="true"]');

@@ -22,6 +22,7 @@ runInNewContext(compiled, { exports, require: (id: string) => {
   };
   if (id === "./theme") return { theme };
   if (id === "./components/visualStyles") return { visualStyles: "" };
+  if (id === "./components/buttonStyles") return { disabledButtonStyles: "" };
   if (id === "./components/TabNavigation.styles") {
     const headerSource = readFileSync(new URL("../src/components/TabNavigation.styles.ts", import.meta.url), "utf8");
     const headerExports: any = {};
@@ -61,6 +62,14 @@ test("section margins do not stack with the shared divider spacing or page foote
     assert.ok(exports.styles.includes(`.armada-control-tab-content .${section} {\n        margin-block-end: 0;`));
   }
   assert.ok(exports.styles.includes(`padding-block-end: ${theme.spaceMedium}`));
+});
+
+test("introductory notices use compact spacing above the native row", () => {
+  const selector = ".armada-tab-panels:has(> .armada-control-tab-content > :is(.native-section, .alternate-section):first-child .armada-notice)";
+  assert.ok(exports.styles.includes(selector));
+  const rule = exports.styles.slice(exports.styles.indexOf(selector)).split("}")[0];
+  assert.ok(rule.includes(`padding-block-start: ${theme.spaceMedium};`));
+  assert.ok(exports.styles.includes(`padding-block-start: ${theme.spaceLarge};`));
 });
 
 test("native option dividers are only suppressed on trailing controls in a section or dialog group", () => {

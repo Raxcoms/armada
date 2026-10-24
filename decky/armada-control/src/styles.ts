@@ -2,6 +2,7 @@ import { classMap, gamepadSliderClasses } from "@decky/ui";
 import { theme } from "./theme";
 import { visualStyles } from "./components/visualStyles";
 import { tabNavigationStyles } from "./components/TabNavigation.styles";
+import { disabledButtonStyles } from "./components/buttonStyles";
 
 // Steam has several section styles, so one class module may not match the rendered section.
 const sectionStyles = classMap
@@ -43,7 +44,6 @@ const nativeSelector = (key: string) => {
 const nativeField = nativeSelector("Field");
 const nativeRow = nativeSelector("PanelSectionRow");
 const nativeSection = nativeSelector("PanelSection");
-const disabledButton = ":is(.armada-control-tabs .armada-control-tab-content, .armada-control-tabs .armada-tab-navigation, .armada-control-dialog-position .armada-control-dialog, .armada-control-startup) button.DialogButton:is(.Disabled, :disabled)";
 const finalFieldStyles = `
       .armada-control-tab-content ${nativeSection} > ${nativeRow}:not(:has(~ :not(.armada-supporting-text))) ${nativeField}::after,
       .armada-control-tab-content ${nativeSection} > ${nativeField}:not(:has(~ :not(.armada-supporting-text)))::after,
@@ -54,16 +54,7 @@ const finalFieldStyles = `
 `;
 
 export const styles = `
-      ${disabledButton} {
-        background: ${theme.disabledSurface};
-        color: ${theme.disabledText};
-        opacity: 1;
-        cursor: not-allowed;
-      }
-      ${disabledButton}:is(.gpfocus, :focus-visible) {
-        outline: ${theme.focusRingWidth} solid ${theme.disabledText};
-        outline-offset: calc(-1 * ${theme.focusRingWidth});
-      }
+      ${disabledButtonStyles}
       .armada-loading-state {
         display: flex;
         flex-direction: column;
@@ -97,6 +88,9 @@ export const styles = `
       .armada-tab-panels {
         min-width: 0;
         padding-block-start: ${theme.spaceLarge};
+      }
+      .armada-tab-panels:has(> .armada-control-tab-content > ${nativeSection}:first-child .armada-notice) {
+        padding-block-start: ${theme.spaceMedium};
       }
       ${sectionStyles}
       ${descriptionStyles}
