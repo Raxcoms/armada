@@ -94,7 +94,7 @@ export function Content() {
       window.clearInterval(timer);
     };
   }, [!!config]);
-  useDebouncedSave({ config, field: "tweaks", snapshot: savedTweaksSnapshot, save: saveTweaks, setConfig, onError: load });
+  const saveTweaksNow = useDebouncedSave({ config, field: "tweaks", snapshot: savedTweaksSnapshot, save: saveTweaks, setConfig, onError: load });
   if (!config) return <div className="armada-control-startup">
     <ArmadaStyles />
     {loadError !== null ? <PanelSection>
@@ -111,7 +111,7 @@ export function Content() {
         activeTab={tab}
         onShowTab={setTab}
         tabs={[
-          { id: "Compatibility", title: t("navigation.games"), icon: tabIcons.Compatibility, content: <Compatibility config={config} setConfig={setConfig} /> },
+          { id: "Compatibility", title: t("navigation.games"), icon: tabIcons.Compatibility, content: <Compatibility config={config} setConfig={setConfig} saveTweaksNow={saveTweaksNow} /> },
           { id: "Profiles", title: t("navigation.profiles"), icon: tabIcons.Power, content: <Profiles config={config} setConfig={setConfig} /> },
           ...(config.rgbSupported ? [
             { id: "RGB", title: t("navigation.rgb"), icon: tabIcons.RGB, content: <RgbLighting /> },

@@ -9,7 +9,7 @@ const expected = {
   "components/FanCurveEditorModal.tsx": ["common.saveChanges"],
   "components/Calibration.tsx": ["calibration.save", "calibration.start"],
   "tabs/Power.tsx": ["common.saveChanges"],
-  "tabs/Compatibility.tsx": ["compatibility.resetAllGames", "compatibility.resetGame", "compatibility.restartGameMode", "common.save"],
+  "tabs/Compatibility.tsx": ["compatibility.resetAllGames", "compatibility.resetGame", "compatibility.restartGameMode", "common.save", "common.saveChanges"],
 };
 
 for (const [file, labels] of Object.entries(expected)) {

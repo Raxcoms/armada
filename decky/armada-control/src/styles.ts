@@ -47,7 +47,7 @@ const nativeSection = nativeSelector("PanelSection");
 const finalFieldStyles = `
       .armada-control-tab-content ${nativeSection} > ${nativeRow}:not(:has(~ :not(.armada-supporting-text))) ${nativeField}::after,
       .armada-control-tab-content ${nativeSection} > ${nativeField}:not(:has(~ :not(.armada-supporting-text)))::after,
-      .armada-control-tab-content ${nativeSection} > .armada-advanced-group:not(:has(~ :not(.armada-supporting-text))) > ${nativeRow}:not(:has(~ :not(.armada-supporting-text))) ${nativeField}::after,
+      .armada-control-dialog .DialogControlsSection > ${nativeRow}:not(:has(~ :not(.armada-supporting-text))) ${nativeField}::after,
       .armada-control-dialog .DialogControlsSection > ${nativeField}:not(:has(~ :not(.armada-supporting-text)))::after {
         content: none;
       }
@@ -90,7 +90,7 @@ export const styles = `
         padding-block-start: ${theme.spaceLarge};
       }
       .armada-tab-panels:has(> .armada-control-tab-content > ${nativeSection}:first-child .armada-notice) {
-        padding-block-start: ${theme.spaceMedium};
+        padding-block-start: 0;
       }
       ${sectionStyles}
       ${descriptionStyles}
@@ -121,7 +121,7 @@ export const styles = `
         background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 1));
         box-shadow: inset 0 0 0 1px ${theme.border};
       }
-      .armada-control-tabs .armada-subheader {
+      :is(.armada-control-tabs, .armada-control-dialog) .armada-subheader {
         text-transform: uppercase;
         font-size: ${theme.textSmall};
         font-weight: 600;
@@ -130,12 +130,9 @@ export const styles = `
         margin: 0;
         padding: ${theme.spaceMedium} 0 ${theme.spaceSmall};
       }
-      .armada-control-tabs .armada-note-error {
+      :is(.armada-control-tabs, .armada-control-dialog) .armada-note-error {
         color: ${theme.error};
         opacity: 1;
-      }
-      .armada-control-tabs .armada-advanced-group {
-        margin: 0 ${theme.spaceMedium};
       }
       .afc-scope .afc-error {
         box-sizing: border-box;

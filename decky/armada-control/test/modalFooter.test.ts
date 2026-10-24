@@ -64,7 +64,7 @@ test("every custom editor and confirmation footer uses the shared native row", (
     "components/CreateCurveModal.tsx": 1,
     "components/FanCurveEditorModal.tsx": 1,
     "tabs/Power.tsx": 1,
-    "tabs/Compatibility.tsx": 4,
+    "tabs/Compatibility.tsx": 5,
   };
   for (const [file, count] of Object.entries(expected)) {
     const text = readFileSync(new URL(file, sourceRoot), "utf8");

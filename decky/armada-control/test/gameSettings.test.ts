@@ -16,6 +16,12 @@ const policyCompiled = ts.transpileModule(readFileSync(new URL("../src/lib/gameS
 const queueCompiled = ts.transpileModule(readFileSync(new URL("../src/lib/gameSettingsQueue.ts", import.meta.url), "utf8"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
+const modalViewCompiled = ts.transpileModule(readFileSync(new URL("../src/components/useModalView.tsx", import.meta.url), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX },
+}).outputText;
+const advancedCompiled = ts.transpileModule(readFileSync(new URL("../src/lib/advancedSettings.ts", import.meta.url), "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText;
 const FOLLOW_STEAM_COMPAT = "__steam_default__";
 const USE_DEFAULT_COMPAT = "__armada_default__";
 const games = [{ appid: "1", name: "First game" }, { appid: "2", name: "Second game" }];
@@ -48,6 +54,12 @@ function setup(overrides: Record<string, any> = {}, initialResolution = "Native"
     ...overrides,
   };
   const modals: Element[] = [];
+  const modalEntries: Array<{ element: Element; open: boolean; Close: () => void }> = [];
+  const modalTrees: any[] = [];
+  const advancedWrites: any[] = [];
+  let advancedResponse: () => Promise<void> = async () => {};
+  let reapplied = 0;
+  let restarted = 0;
   const resolutionWrites: Array<[number, string]> = [];
   const launchResets: string[] = [];
   const resolutions = new Map<number, string | Promise<string>>();
@@ -59,10 +71,28 @@ function setup(overrides: Record<string, any> = {}, initialResolution = "Native"
   let tree: any;
   let globalResolution = initialResolution;
   let pendingEffects: Array<() => void> = [];
+  let pendingLayoutEffects: Array<() => void> = [];
+  let rootMounted = true;
   const exports: any = {};
   const setConfig = (value: any) => { config = typeof value === "function" ? value(config) : value; };
-  const componentNames = ["DialogBody", "DialogButton", "DialogControlsSection", "DialogFooter", "Dropdown", "Field", "PanelSection", "TextField"];
+  const saveTweaksNow = async (update: (current: any) => any) => {
+    advancedWrites.push(clone(update(config.tweaks)));
+    await advancedResponse();
+    config = { ...config, tweaks: update(config.tweaks) };
+    return config;
+  };
+  const componentNames = ["DialogBody", "DialogButton", "DialogControlsSection", "DialogControlsSectionHeader", "DialogFooter", "Dropdown", "Field", "PanelSection", "TextField"];
   const element = (type: Element["type"], props: any, key?: string) => ({ type, props, key });
+  const effectHook = (pending: () => Array<() => void>) => (effect: () => (() => void) | undefined, dependencies: any[]) => {
+    const owner = frame;
+    const index = cursor++;
+    const previous = owner.effects.get(index);
+    if (previous && dependencies.every((value, i) => Object.is(value, previous.dependencies[i]))) return;
+    pending().push(() => {
+      previous?.cleanup?.();
+      owner.effects.set(index, { dependencies, cleanup: effect() });
+    });
+  };
   const react = {
     useState: (initial: any) => {
       const owner = frame;
@@ -77,15 +107,11 @@ function setup(overrides: Record<string, any> = {}, initialResolution = "Native"
       if (!(index in frame.slots)) frame.slots[index] = { current: initial };
       return frame.slots[index];
     },
-    useEffect: (effect: () => (() => void) | undefined, dependencies: any[]) => {
-      const owner = frame;
-      const index = cursor++;
-      const previous = owner.effects.get(index);
-      if (previous && dependencies.every((value, i) => Object.is(value, previous.dependencies[i]))) return;
-      pendingEffects.push(() => {
-        previous?.cleanup?.();
-        owner.effects.set(index, { dependencies, cleanup: effect() });
-      });
+    useEffect: effectHook(() => pendingEffects),
+    useLayoutEffect: effectHook(() => pendingLayoutEffects),
+    useSyncExternalStore: (subscribe: (listener: () => void) => () => void, getSnapshot: () => any) => {
+      react.useEffect(() => subscribe(() => {}), [subscribe]);
+      return getSnapshot();
     },
   };
   const apps = {
@@ -119,14 +145,32 @@ function setup(overrides: Record<string, any> = {}, initialResolution = "Native"
   runInNewContext(policyCompiled, { exports: gamePolicy, require: () => compat });
   const queue: any = {};
   runInNewContext(queueCompiled, { exports: queue });
+  const advanced: any = {};
+  runInNewContext(advancedCompiled, { exports: advanced, require: () => ({ clone }) });
+  const modalView: any = {};
+  runInNewContext(modalViewCompiled, { exports: modalView, require: (id: string) => {
+    if (id === "react") return react;
+    if (id === "react/jsx-runtime") return { jsx: element, jsxs: element };
+    throw new Error(`Unexpected import: ${id}`);
+  } });
   runInNewContext(compiled, {
     exports,
     require: (id: string) => {
       if (id === "react") return react;
       if (id === "react/jsx-runtime") return { jsx: element, jsxs: element, Fragment: "Fragment" };
-      if (id === "@decky/ui") return { ...Object.fromEntries(componentNames.map((name) => [name, name])), DialogButtonPrimary: "DialogButton", showModal: (modal: Element) => modals.push(modal) };
+      if (id === "@decky/ui") return { ...Object.fromEntries(componentNames.map((name) => [name, name])), DialogButtonPrimary: "DialogButton", showModal: (modal: Element, _parent: unknown, options?: { fnOnClose?: () => void }) => {
+        const entry = { element: modal, open: true, Close: () => {
+          if (!entry.open) return;
+          entry.open = false;
+          options?.fnOnClose?.();
+        } };
+        modals.push(modal);
+        modalEntries.push(entry);
+        return entry;
+      } };
       if (id === "../components/widgets") return Object.fromEntries(["ButtonRow", "ControlRow", "NoticeSection", "SectionDescription", "SelectEdit", "SliderEdit", "SupportingText", "ToggleRow"].map((name) => [name, name]));
       if (id === "../components/ArmadaModalRoot") return { ArmadaModalRoot: "ArmadaModalRoot", ArmadaDialogHeader: "ArmadaDialogHeader", ArmadaDialogFooter: "ArmadaDialogFooter" };
+      if (id === "../components/useModalView") return modalView;
       if (id === "../i18n") return {
         t: (key: string, values?: Record<string, string>) => values ? `${key}:${Object.values(values).join(":")}` : key,
         translateLabel: (label: string) => label, getCurrentLocale: () => "en",
@@ -137,13 +181,14 @@ function setup(overrides: Record<string, any> = {}, initialResolution = "Native"
       if (id === "../lib/steamCompat") return compat;
       if (id === "../lib/gameSettings") return gamePolicy;
       if (id === "../lib/gameSettingsQueue") return queue;
+      if (id === "../lib/advancedSettings") return advanced;
       if (id === "../lib/steamSettings") return {
         getGlobalResolution: () => globalResolution,
         setGlobalResolution: async (value: string) => { globalResolution = value; return value; },
       };
       if (id === "../backend") return {
         getCompatMappedAppids: async () => [], saveCompatApplied: async () => {},
-        saveTweaks: async () => {}, reapplyPerf: async () => {}, restartGameMode: async () => {},
+        reapplyPerf: async () => { reapplied++; }, restartGameMode: async () => { restarted++; },
       };
       throw new Error(`Unexpected import: ${id}`);
     },
@@ -165,7 +210,13 @@ function setup(overrides: Record<string, any> = {}, initialResolution = "Native"
       }
       return { ...node, props: { ...node.props, children: expand(node.props?.children, `${path}/children`) } };
     };
-    tree = expand(element(exports.Compatibility, { config, setConfig }), "root");
+    tree = rootMounted ? expand(element(exports.Compatibility, { config, setConfig, saveTweaksNow }), "root") : null;
+    const layoutEffects = pendingLayoutEffects;
+    pendingLayoutEffects = [];
+    for (const effect of layoutEffects) effect();
+    modalEntries.forEach((entry, index) => {
+      modalTrees[index] = entry.open ? expand({ ...entry.element, props: { ...entry.element.props, closeModal: entry.Close } }, `modal/${index}`) : null;
+    });
     for (const [identity, owner] of frames) {
       if (mounted.has(identity)) continue;
       owner.active = false;
@@ -189,11 +240,24 @@ function setup(overrides: Record<string, any> = {}, initialResolution = "Native"
     assert.ok(node, `Missing ${type}: ${label}`);
     return node;
   }
+  function modalControl(type: string, label?: string, index = modalEntries.length - 1) {
+    const node = allElements(modalTrees[index]).find((node) => node.type === type
+      && (label === undefined || node.props.label === label || node.props.children === label));
+    assert.ok(node, `Missing modal ${type}: ${label}`);
+    return node;
+  }
   render();
   return {
-    render, editor, control, modals, resolutions, compatStates, resolutionWrites, launchResets, compatWrites, apps, compat,
+    render, editor, control, modalControl, modals, resolutions, compatStates, resolutionWrites, launchResets, compatWrites, apps, compat, setConfig, advancedWrites,
+    respondAdvanced: (response: () => Promise<void>) => { advancedResponse = response; },
+    get reapplied() { return reapplied; },
+    get restarted() { return restarted; },
     get config() { return config; },
     elements: () => allElements(tree),
+    modalElements: (index = modalEntries.length - 1) => allElements(modalTrees[index]),
+    modalOpen: (index = modalEntries.length - 1) => modalEntries[index]?.open ?? false,
+    closeModal: (index = modalEntries.length - 1) => { modalEntries[index].Close(); render(); },
+    unmount: () => { rootMounted = false; render(); },
     select: (appid: string) => {
       const selector = allElements(tree).find((node) => node.type === "SelectEdit" && node.props.label === undefined);
       assert.ok(selector);
@@ -281,8 +345,6 @@ test("disabling and restoring an inherited environment variable only changes its
     global: { windowsCompatTool: FOLLOW_STEAM_COMPAT, env: { GLOBAL_OPTION: "1" } },
     games: { "1": { env: { LOCAL_OPTION: "2" } } },
   } });
-  app.control("1", "ButtonRow", "compatibility.environment").props.onClick();
-  app.render();
   app.control("1", "ToggleRow", "GLOBAL_OPTION=1").props.onChange(false);
   assert.equal(app.config.tweaks.games["1"].env.GLOBAL_OPTION, null);
   assert.equal(app.config.tweaks.games["1"].env.LOCAL_OPTION, "2");
@@ -290,6 +352,383 @@ test("disabling and restoring an inherited environment variable only changes its
   app.render();
   app.control("1", "ToggleRow", "GLOBAL_OPTION=1").props.onChange(true);
   assert.equal("GLOBAL_OPTION" in app.config.tweaks.games["1"].env, false);
+});
+
+test("CPU settings stay inline and environment sections are always expanded for each target", () => {
+  const app = setup({ tweaks: {
+    global: { windowsCompatTool: FOLLOW_STEAM_COMPAT, cores: "all", env: { GLOBAL_OPTION: "1" } },
+    games: { "1": { enabled: true, cores: "0-1", wineTopology: false, env: { LOCAL_OPTION: "2" } } },
+  } });
+  for (const appid of ["1", null]) {
+    const nodes = allElements(app.editor(appid).rendered);
+    assert.equal(nodes.filter((node) => node.type === "SelectEdit" && node.props.label === "compatibility.cpuCores").length, 1);
+    assert.ok(app.control(appid, "ToggleRow", "compatibility.wineCpuTopology"));
+    assert.ok(nodes.some((node) => node.type === "PanelSection" && node.props.title === "compatibility.environment"));
+    assert.ok(app.control(appid, "ButtonRow", "compatibility.addCustomVariable"));
+    assert.equal(nodes.filter((node) => node.type === "ButtonRow" && node.props.children === "compatibility.advancedSettings").length, 1);
+    for (const label of ["options.performance", "compatibility.hostThunks", "compatibility.environment", "compatibility.drivers"]) {
+      assert.equal(nodes.some((node) => node.type === "ButtonRow" && node.props.children === label), false);
+    }
+  }
+  assert.ok(app.control("1", "ToggleRow", "GLOBAL_OPTION=1"));
+  app.control("1", "ToggleRow", "compatibility.wineCpuTopology").props.onChange(true);
+  app.render();
+  app.control(null, "SelectEdit", "compatibility.cpuCores").props.onChange("all");
+  assert.equal(app.config.tweaks.games["1"].cores, "0-1");
+  assert.equal(app.config.tweaks.games["1"].wineTopology, true);
+  assert.equal(app.config.tweaks.global.cores, "all");
+  assert.equal(app.config.tweaks.global.wineTopology, undefined);
+  const defaultButtons = allElements(app.editor(null).rendered).filter((node) => node.type === "ButtonRow");
+  assert.equal(defaultButtons.at(-1)?.props.children, "compatibility.resetAllGames");
+});
+
+test("an open environment editor merges newer variables into its original game target", () => {
+  const app = setup({ tweaks: {
+    global: { windowsCompatTool: FOLLOW_STEAM_COMPAT },
+    games: { "1": { enabled: true, env: { LOCAL_OPTION: "1", OTHER_OPTION: "2" } }, "2": { enabled: true } },
+  } });
+  const row = allElements(app.editor("1").rendered).find((node) => node.type === "ButtonRow"
+    && allElements(node.props.children).some((child) => child.props.children === "LOCAL_OPTION=1"));
+  assert.ok(row);
+  row.props.onClick();
+  app.render();
+  app.modalControl("TextField", "common.value").props.onChange({ target: { value: "updated" } });
+  app.setConfig((current: any) => ({ ...current, tweaks: { ...current.tweaks, games: {
+    ...current.tweaks.games, "1": { ...current.tweaks.games["1"], env: { LOCAL_OPTION: "1", OTHER_OPTION: "newer", ADDED_OPTION: "3" } },
+  } } }));
+  app.select("2");
+  app.modalControl("DialogButton", "common.save").props.onClick();
+  app.render();
+  assert.deepEqual({ ...app.config.tweaks.games["1"].env }, { LOCAL_OPTION: "updated", OTHER_OPTION: "newer", ADDED_OPTION: "3" });
+  assert.equal(app.config.selectedGame.appid, "2");
+  assert.equal(app.config.tweaks.games["2"].env, undefined);
+  assert.equal(app.modalOpen(), false);
+});
+
+test("Advanced opens expanded sections with conditional drivers and target-specific controls", () => {
+  const app = setup({ turnipDrivers: [{ id: "stable", label: "Stable" }, { id: "preview", label: "Preview" }] });
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  const nodes = app.modalElements();
+  const sectionTitles = nodes.filter((node) => node.type === "DialogControlsSectionHeader").map((node) => node.props.children);
+  assert.deepEqual(Array.from(sectionTitles), ["options.performance", "compatibility.hostThunks", "compatibility.drivers"]);
+  assert.equal(nodes.filter((node) => node.type === "SelectEdit" && node.props.label === "compatibility.cpuCores").length, 1);
+  assert.equal(nodes.some((node) => node.type === "ToggleRow" && node.props.label === "compatibility.wineCpuTopology"), false);
+  assert.equal(nodes.some((node) => node.type === "ToggleRow" && node.props.label === "compatibility.vulkanRealtimeQueue"), false);
+  assert.ok(app.modalControl("ToggleRow", "Host Vulkan"));
+  assert.ok(app.modalControl("SelectEdit", "Turnip"));
+  assert.equal(nodes.some((node) => node.type === "ButtonRow"), false);
+  const footer = nodes.find((node) => node.type === "ArmadaDialogFooter");
+  const actions = allElements(footer).filter((node) => node.type === "DialogButton");
+  assert.deepEqual(Array.from(actions, (node) => node.props.children), ["common.saveChanges", "common.cancel", "common.resetToDefault", "compatibility.reapplyRunningGame"]);
+  app.modalControl("DialogButton", "common.cancel").props.onClick();
+  app.render();
+  assert.equal(app.modalOpen(), false);
+  app.control(null, "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  assert.ok(app.modalControl("ToggleRow", "compatibility.vulkanRealtimeQueue"));
+  assert.equal(app.modalElements().some((node) => node.props.children === "compatibility.reapplyRunningGame"), false);
+  app.select("2");
+  assert.equal(app.modalOpen(), true);
+  const singleDriver = setup({ turnipDrivers: [{ id: "stable", label: "Stable" }] });
+  singleDriver.control(null, "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  singleDriver.render();
+  assert.equal(singleDriver.modalElements().some((node) => node.props.children === "compatibility.drivers"), false);
+});
+
+test("Advanced keeps consecutive edits isolated until Save and preserves unrelated updates", async () => {
+  const app = setup();
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  app.modalControl("ToggleRow", "Host Vulkan").props.onChange(false);
+  app.render();
+  assert.equal(app.modalControl("ToggleRow", "Host Vulkan").props.value, false);
+  app.control(null, "SelectEdit", "compatibility.fexPreset").props.onChange("fast");
+  app.setConfig((current: any) => ({ ...current, sshEnabled: true, tweaks: { ...current.tweaks, games: { ...current.tweaks.games, "2": { nice: -4 } } } }));
+  app.render();
+  app.modalControl("ToggleRow", "Host OpenGL").props.onChange(false);
+  app.render();
+  app.modalControl("SelectEdit", "compatibility.cpuScheduler").props.onChange("eevdf");
+  app.render();
+  assert.equal(app.config.tweaks.games["1"].thunks, undefined);
+  assert.equal(app.config.tweaks.games["1"].scheduler, undefined);
+  assert.equal(app.advancedWrites.length, 0);
+  assert.equal(app.modalControl("ToggleRow", "Host Vulkan").props.value, false);
+  assert.equal(app.modalControl("ToggleRow", "Host OpenGL").props.value, false);
+  assert.equal(app.config.tweaks.games["2"].nice, -4);
+  assert.equal(app.config.tweaks.global.fexProfile, "fast");
+  assert.equal(app.config.sshEnabled, true);
+  app.modalControl("SelectEdit", "compatibility.cpuCores").props.onChange("custom");
+  app.render();
+  app.modalControl("TextField", "compatibility.customCores").props.onChange({ target: { value: "0-1" } });
+  app.render();
+  assert.equal(app.config.tweaks.games["1"].gamescopeCores, undefined);
+  app.modalControl("SelectEdit", "compatibility.cpuCores").props.onChange("all");
+  app.render();
+  app.modalControl("SelectEdit", "compatibility.cpuCores").props.onChange("custom");
+  app.render();
+  assert.equal(app.modalControl("TextField", "compatibility.customCores").props.value, "");
+  assert.equal(app.modalControl("DialogButton", "common.saveChanges").props.disabled, true);
+  assert.ok(app.modalElements().some((node) => node.type === "SupportingText" && node.props.children === "compatibility.enterCores"));
+  app.modalControl("SelectEdit", "compatibility.cpuCores").props.onChange("all");
+  app.render();
+  app.modalControl("DialogButton", "common.saveChanges").props.onClick();
+  await app.settle();
+  assert.deepEqual({ ...app.config.tweaks.games["1"].thunks }, { Vulkan: false, GL: false });
+  assert.equal(app.config.tweaks.games["1"].scheduler, "eevdf");
+  assert.equal(app.config.tweaks.games["1"].gamescopeCores, "all");
+  assert.equal(app.config.tweaks.games["2"].nice, -4);
+  assert.equal(app.config.tweaks.global.fexProfile, "fast");
+  assert.equal(app.config.sshEnabled, true);
+  assert.equal(app.modalOpen(), false);
+});
+
+for (const inherited of [false, true]) {
+  test(`Advanced thunk Save preserves newer ${inherited ? "inherited" : "per-game"} module settings`, async () => {
+    const initialThunks = { Vulkan: true, GL: true };
+    const app = setup({ tweaks: {
+      global: { windowsCompatTool: FOLLOW_STEAM_COMPAT, thunks: initialThunks },
+      games: { "1": { enabled: true, ...(inherited ? {} : { thunks: initialThunks }) } },
+    } });
+    app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+    app.render();
+    app.modalControl("ToggleRow", "Host Vulkan").props.onChange(false);
+    app.render();
+    app.setConfig((current: any) => {
+      const tweaks = clone(current.tweaks);
+      const target = inherited ? tweaks.global : tweaks.games["1"];
+      target.thunks = { ...target.thunks, GL: false, WaylandClient: false };
+      return { ...current, tweaks };
+    });
+    app.render();
+    app.modalControl("DialogButton", "common.saveChanges").props.onClick();
+    await app.settle();
+    assert.deepEqual({ ...app.config.tweaks.games["1"].thunks }, { Vulkan: false, GL: false, WaylandClient: false });
+    assert.equal(app.config.tweaks.global.thunks.Vulkan, true);
+    assert.equal(app.modalOpen(), false);
+  });
+}
+
+test("Advanced Restore followed by edits replaces old thunk settings and clears other overrides", async () => {
+  const app = setup({ tweaks: {
+    global: { windowsCompatTool: FOLLOW_STEAM_COMPAT, thunks: { Vulkan: true, GL: true } },
+    games: { "1": { enabled: true, cores: "all", nice: -5, scheduler: "eevdf", thunks: { Vulkan: false, GL: false, asound: false } } },
+  } });
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  app.modalControl("DialogButton", "common.resetToDefault").props.onClick();
+  app.render();
+  app.modalControl("ToggleRow", "Host Vulkan").props.onChange(false);
+  app.render();
+  app.modalControl("DialogButton", "common.saveChanges").props.onClick();
+  await app.settle();
+  assert.deepEqual({ ...app.config.tweaks.games["1"].thunks }, { Vulkan: false, GL: true });
+  assert.equal(app.config.tweaks.games["1"].nice, undefined);
+  assert.equal(app.config.tweaks.games["1"].scheduler, undefined);
+  assert.equal(app.config.tweaks.games["1"].cores, "all");
+  assert.equal(app.modalOpen(), false);
+});
+
+test("Advanced Cancel and Back discard drafts, and target changes and unmount close the editor", () => {
+  const app = setup({ tweaks: { global: { windowsCompatTool: FOLLOW_STEAM_COMPAT }, games: { "1": { enabled: true }, "2": { enabled: true } } } });
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  assert.equal(app.modals.length, 1);
+  app.modalControl("ToggleRow", "Host Vulkan").props.onChange(false);
+  app.render();
+  app.closeModal();
+  assert.equal(app.modalOpen(), false);
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  assert.equal(app.modalControl("ToggleRow", "Host Vulkan").props.value, true);
+  app.modalControl("ToggleRow", "Host OpenGL").props.onChange(false);
+  app.render();
+  app.modalControl("ArmadaModalRoot").props.onCancel();
+  app.render();
+  assert.equal(app.modalOpen(), false);
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  assert.equal(app.modalControl("ToggleRow", "Host OpenGL").props.value, true);
+  app.select("2");
+  assert.equal(app.modalOpen(), false);
+  app.control("2", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  assert.equal(app.modalControl("ToggleRow", "Host Vulkan").props.value, true);
+  app.unmount();
+  assert.equal(app.modalOpen(), false);
+  assert.equal(app.config.tweaks.games["2"].thunks, undefined);
+  assert.equal(app.config.tweaks.games["1"].thunks, undefined);
+  assert.equal(app.advancedWrites.length, 0);
+});
+
+test("disabling the game profile closes its Advanced modal before the transition finishes", async () => {
+  const app = setup();
+  await app.settle();
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const readResolution = app.apps.GetResolutionOverrideForApp;
+  app.apps.GetResolutionOverrideForApp = async (appid) => { await pending; return readResolution(appid); };
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  app.control("1", "ToggleRow", "gameSettings.usePerGame").props.onChange(false);
+  app.render();
+  assert.equal(app.modalOpen(), false);
+  release();
+  await app.settle();
+  assert.equal(app.config.tweaks.games["1"].enabled, false);
+});
+
+test("Advanced Restore clears only its own overrides after Save and preserves inline settings", async () => {
+  const performance = { cores: "0-1", wineTopology: false, nice: -5, gamescopeCores: "2-3", gamescopeNice: -2, scheduler: "eevdf" };
+  const app = setup({ tweaks: {
+    global: { windowsCompatTool: FOLLOW_STEAM_COMPAT, cores: "all", nice: -1 },
+    games: { "1": { enabled: true, ...performance, env: { LOCAL_OPTION: "1" }, thunks: { Vulkan: false }, turnipDriver: "preview" } },
+  } });
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  app.control("1", "TextField", "compatibility.customCoresDescription").props.onChange({ target: { value: "99" } });
+  app.modalControl("TextField", "compatibility.customCores").props.onChange({ target: { value: "99" } });
+  app.render();
+  assert.equal(app.config.tweaks.games["1"].cores, "0-1");
+  assert.equal(app.config.tweaks.games["1"].gamescopeCores, "2-3");
+  const footer = app.modalElements().find((node) => node.type === "ArmadaDialogFooter");
+  assert.ok(allElements(footer).some((node) => node.props.children === "common.resetToDefault"));
+  app.modalControl("DialogButton", "common.resetToDefault").props.onClick();
+  app.render();
+  assert.equal(app.config.tweaks.games["1"].nice, -5);
+  assert.equal(app.config.tweaks.games["1"].thunks.Vulkan, false);
+  assert.equal(app.advancedWrites.length, 0);
+  assert.equal(app.modalElements().some((node) => node.type === "TextField" && node.props.label === "compatibility.customCores"), false);
+  app.modalControl("DialogButton", "common.saveChanges").props.onClick();
+  await app.settle();
+  for (const key of ["nice", "gamescopeCores", "gamescopeNice", "scheduler", "thunks", "turnipDriver"]) {
+    assert.equal(key in app.config.tweaks.games["1"], false, key);
+  }
+  assert.equal(app.config.tweaks.games["1"].cores, "0-1");
+  assert.equal(app.config.tweaks.games["1"].wineTopology, false);
+  assert.equal(app.config.tweaks.games["1"].env.LOCAL_OPTION, "1");
+  assert.equal(app.config.tweaks.games["1"].enabled, true);
+  assert.equal(app.config.tweaks.global.nice, -1);
+  assert.equal(app.control("1", "TextField", "compatibility.customCoresDescription").props.value, "99");
+  assert.equal(app.modalOpen(), false);
+});
+
+test("running-game reapply uses current tweaks and disappears when another game starts", async () => {
+  const app = setup();
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  app.modalControl("SelectEdit", "compatibility.cpuScheduler").props.onChange("eevdf");
+  app.render();
+  assert.equal(app.modalControl("DialogButton", "compatibility.reapplyRunningGame").props.disabled, true);
+  app.modalControl("DialogButton", "common.cancel").props.onClick();
+  app.render();
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.control(null, "SelectEdit", "compatibility.fexPreset").props.onChange("fast");
+  app.render();
+  app.modalControl("DialogButton", "compatibility.reapplyRunningGame").props.onClick();
+  await app.settle();
+  assert.equal(app.reapplied, 1);
+  assert.deepEqual(app.advancedWrites[0], clone(app.config.tweaks));
+  assert.equal(app.config.tweaks.games["1"].scheduler, undefined);
+  assert.equal(app.modalControl("Field", "common.status").props.description, "compatibility.appliedToRunningGame");
+  app.setConfig((current: any) => ({ ...current, game: games[1] }));
+  app.render();
+  assert.equal(app.modalElements().some((node) => node.props.children === "compatibility.reapplyRunningGame"), false);
+});
+
+test("the default realtime queue setting persists latest tweaks when restart is confirmed", async () => {
+  const app = setup();
+  app.control(null, "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  app.modalControl("ToggleRow", "compatibility.vulkanRealtimeQueue").props.onChange(true);
+  app.render();
+  assert.equal(app.config.tweaks.global.gamescopeVulkanRealtime, undefined);
+  assert.equal(app.restarted, 0);
+  assert.equal(app.modals.length, 1);
+  app.modalControl("DialogButton", "common.saveChanges").props.onClick();
+  await app.settle();
+  assert.equal(app.config.tweaks.global.gamescopeVulkanRealtime, true);
+  assert.equal(app.config.tweaks.games["1"].gamescopeVulkanRealtime, undefined);
+  app.control("1", "SelectEdit", "compatibility.fexPreset").props.onChange("fast");
+  app.render();
+  app.modalControl("DialogButton", "compatibility.restartGameMode").props.onClick();
+  await app.settle();
+  assert.equal(app.restarted, 1);
+  assert.deepEqual(app.advancedWrites[1], clone(app.config.tweaks));
+  assert.equal(app.advancedWrites[1].games["1"].fexProfile, "fast");
+});
+
+test("Advanced default Restore uses factory settings and stays disabled on older backends", async () => {
+  const app = setup({
+    tweaksDefaults: { global: { nice: 0, thunks: { Vulkan: true }, gamescopeVulkanRealtime: false }, games: {} },
+    tweaks: { global: { windowsCompatTool: FOLLOW_STEAM_COMPAT, nice: -3, thunks: { Vulkan: false }, cores: "all", env: { GLOBAL_OPTION: "1" } }, games: { "1": { enabled: true, nice: -5 } } },
+  });
+  app.control(null, "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  app.modalControl("DialogButton", "common.resetToDefault").props.onClick();
+  app.render();
+  assert.equal(app.modalControl("ToggleRow", "Host Vulkan").props.value, true);
+  assert.equal(app.config.tweaks.global.nice, -3);
+  assert.equal(app.advancedWrites.length, 0);
+  app.modalControl("DialogButton", "common.cancel").props.onClick();
+  app.render();
+  app.control(null, "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  assert.equal(app.modalControl("ToggleRow", "Host Vulkan").props.value, false);
+  app.modalControl("DialogButton", "common.resetToDefault").props.onClick();
+  app.render();
+  app.modalControl("DialogButton", "common.saveChanges").props.onClick();
+  await app.settle();
+  assert.equal(app.config.tweaks.global.nice, 0);
+  assert.equal(app.config.tweaks.global.thunks.Vulkan, true);
+  assert.equal(app.config.tweaks.global.cores, "all");
+  assert.equal(app.config.tweaks.global.env.GLOBAL_OPTION, "1");
+  assert.equal(app.config.tweaks.games["1"].nice, -5);
+  assert.equal(app.modalOpen(), false);
+  assert.equal(app.modals.length, 2);
+  const legacy = setup();
+  legacy.control(null, "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  legacy.render();
+  assert.equal(legacy.modalControl("DialogButton", "common.resetToDefault").props.disabled, true);
+});
+
+test("failed Advanced saves retain the draft and retries merge current state without duplicate saves", async () => {
+  const app = setup();
+  app.respondAdvanced(async () => { throw new Error("write failed"); });
+  app.control("1", "ButtonRow", "compatibility.advancedSettings").props.onClick();
+  app.render();
+  app.modalControl("ToggleRow", "Host Vulkan").props.onChange(false);
+  app.render();
+  app.modalControl("DialogButton", "common.saveChanges").props.onClick();
+  await app.settle();
+  assert.equal(app.modalOpen(), true);
+  assert.equal(app.modalControl("ToggleRow", "Host Vulkan").props.value, false);
+  assert.equal(app.config.tweaks.games["1"].thunks, undefined);
+  assert.ok(app.modalElements().some((node) => node.type === "SupportingText" && node.props.children === "Error: write failed"));
+  let release!: () => void;
+  app.respondAdvanced(() => new Promise<void>((resolve) => { release = resolve; }));
+  const save = app.modalControl("DialogButton", "common.saveChanges").props.onClick;
+  save();
+  save();
+  app.render();
+  assert.equal(app.advancedWrites.length, 2);
+  assert.equal(app.modalControl("DialogButton", "common.cancel").props.disabled, true);
+  assert.equal(app.modalControl("DialogButton", "common.resetToDefault").props.disabled, true);
+  app.modalControl("ArmadaModalRoot").props.onCancel();
+  assert.equal(app.modalOpen(), true);
+  app.setConfig((current: any) => ({ ...current, sshEnabled: true, tweaks: { ...current.tweaks, games: {
+    ...current.tweaks.games, "1": { ...current.tweaks.games["1"], nice: -7, env: { NEW_OPTION: "1" } }, "2": { nice: -4 },
+  } } }));
+  app.render();
+  release();
+  await app.settle();
+  assert.equal(app.modalOpen(), false);
+  assert.equal(app.config.tweaks.games["1"].thunks.Vulkan, false);
+  assert.equal(app.config.tweaks.games["1"].env.NEW_OPTION, "1");
+  assert.equal(app.config.tweaks.games["1"].nice, -7);
+  assert.equal(app.config.tweaks.games["2"].nice, -4);
+  assert.equal(app.config.sshEnabled, true);
 });
 
 test("resetting one game preserves defaults and other games", async () => {

@@ -68,16 +68,16 @@ test("introductory notices use compact spacing above the native row", () => {
   const selector = ".armada-tab-panels:has(> .armada-control-tab-content > :is(.native-section, .alternate-section):first-child .armada-notice)";
   assert.ok(exports.styles.includes(selector));
   const rule = exports.styles.slice(exports.styles.indexOf(selector)).split("}")[0];
-  assert.ok(rule.includes(`padding-block-start: ${theme.spaceMedium};`));
+  assert.ok(rule.includes("padding-block-start: 0;"));
   assert.ok(exports.styles.includes(`padding-block-start: ${theme.spaceLarge};`));
 });
 
 test("native option dividers are only suppressed on trailing controls in a section or dialog group", () => {
   assert.ok(exports.styles.includes(":is(.native-row, .alternate-row):not(:has(~ :not(.armada-supporting-text)))"));
   assert.ok(exports.styles.includes(".armada-control-dialog .DialogControlsSection > :is(.native-field, .alternate-field):not(:has(~ :not(.armada-supporting-text)))::after"));
+  assert.ok(exports.styles.includes(".armada-control-dialog .DialogControlsSection > :is(.native-row, .alternate-row):not(:has(~ :not(.armada-supporting-text))) :is(.native-field, .alternate-field)::after"));
   assert.ok(exports.styles.includes("content: none;"));
   assert.ok(!exports.styles.includes(".armada-control-tabs :is(.native-field, .alternate-field)::after"));
-  assert.ok(exports.styles.includes(".armada-advanced-group:not(:has(~ :not(.armada-supporting-text))) >"));
 });
 
 test("native descriptions share the supporting color and section titles keep only the native description gap", () => {
