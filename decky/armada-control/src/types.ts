@@ -179,6 +179,7 @@ export interface Config {
   chargingFanPwm: number;
   sshEnabled: boolean;
   swipeGesturesEnabled: boolean;
+  gyro: { supported: boolean; enabled: boolean };
   mtpEnabled: boolean;
   desktopMode: string;
   desktopModes: DropdownChoice[];

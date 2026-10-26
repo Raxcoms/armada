@@ -110,6 +110,18 @@ def set_swipe_gestures_enabled(enabled):
     return bool(call("set_swipe_gestures_enabled", enabled=enabled)["enabled"])
 
 
+def gyro_state():
+    try:
+        state = call("get_gyro")
+        return {"supported": bool(state["supported"]), "enabled": bool(state["enabled"])}
+    except Exception:
+        return {"supported": False, "enabled": False}
+
+
+def set_gyro_enabled(enabled):
+    return bool(call("set_gyro_enabled", enabled=enabled)["enabled"])
+
+
 def set_ssh_enabled(enabled):
     return bool(call("set_ssh_enabled", enabled=bool(enabled)).get("enabled"))
 
@@ -148,6 +160,10 @@ def bottom_screen_active():
 
 def set_bottom_screen_brightness(brightness):
     return int(call("set_bottom_screen_brightness", brightness=brightness).get("brightness", 0))
+
+
+def set_companion_locked(locked):
+    return bool(call("set_companion_locked", locked=bool(locked)).get("locked"))
 
 
 def desktop_mode() -> str:
