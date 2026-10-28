@@ -64,5 +64,12 @@ to a commit, or `armada` if it's original; a URL source with no `notes` is verba
   source: armada
 - `patches/0032-steamcompmgr-use-the-exact-rate-for-refresh-only-requests.patch`
   source: armada
-- `patches/0033-drm-add-direct-auto-hdr.patch`
+
+- `patches/0033-steamcompmgr-optional-blank-overlay-placeholder.patch`
+  source: armada
+  notes: Context refreshed for the repeat-frame argument on the current Gamescope base; behaviour unchanged.
+
+- `patches/0034-vulkan-allow-linear-composition-output.patch`
+  source: armada
+- `patches/0035-drm-add-direct-auto-hdr.patch`
   source: armada
