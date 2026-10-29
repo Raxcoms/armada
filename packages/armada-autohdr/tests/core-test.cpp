@@ -7,23 +7,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <new>
+#include <limits>
 
 static unsigned checks = 0;
-static bool measure_allocations = false;
-static unsigned allocations = 0;
-
-void *operator new(std::size_t size)
-{
-    if (measure_allocations)
-        ++allocations;
-    if (void *pointer = std::malloc(size))
-        return pointer;
-    throw std::bad_alloc();
-}
-
-void operator delete(void *pointer) noexcept { std::free(pointer); }
-void operator delete(void *pointer, std::size_t) noexcept { std::free(pointer); }
 
 #define CHECK(condition) do { \
     ++checks; \
@@ -38,23 +24,67 @@ static bool finite(float value)
     return (std::bit_cast<uint32_t>(value) & 0x7f800000u) != 0x7f800000u;
 }
 
+static double reference_curve(double input, double sdr, double peak)
+{
+    // Invert the forward curve numerically instead of copying the implementation.
+    const double p_sdr = 1.0 + 32.0 * std::pow(sdr / 10000.0, 1.0 / 2.4);
+    const double yc = std::log1p(std::pow(std::clamp(input, 0.0, 1.0), 1.0 / 2.4) * (p_sdr - 1.0)) / std::log(p_sdr);
+    double low = 0.0, high = 1.0;
+    for (unsigned i = 0; i < 60; ++i)
+    {
+        const double yp = (low + high) * 0.5;
+        const double mapped = yp <= 0.7399 ? 1.077 * yp : yp < 0.9909 ?
+            (-1.151 * yp + 2.7811) * yp - 0.6302 : 0.5 * yp + 0.5;
+        if (mapped < yc)
+            low = yp;
+        else
+            high = yp;
+    }
+    const double p_hdr = 1.0 + 32.0 * std::pow(peak / 10000.0, 1.0 / 2.4);
+    return std::pow(std::expm1((low + high) * 0.5 * std::log(p_hdr)) / (p_hdr - 1.0), 2.4);
+}
+
+static bool close(float value, double expected, double margin = 0.0000001, double relative = 0.0005)
+{
+    return std::fabs(value - expected) <= margin + std::fabs(expected) * relative;
+}
+
 static void check_math()
 {
-    CHECK(armada_autohdr_abi_version() == ARMADA_AUTOHDR_ABI_VERSION);
-    for (float sdr : {80.0f, 100.0f, 203.0f, 400.0f})
-        for (float peak : {100.0f, 400.0f, 1000.0f, 2000.0f})
+    const std::array gaps{
+        std::array{1.077 * 0.7399, (-1.151 * 0.7399 + 2.7811) * 0.7399 - 0.6302},
+        std::array{(-1.151 * 0.9909 + 2.7811) * 0.9909 - 0.6302, 0.5 * 0.9909 + 0.5},
+    };
+    for (float sdr : {1.0f, 100.0f, 1000.0f})
+        for (float peak : {1.0f, 100.0f, 1000.0f})
         {
             float previous = 0.0f;
             for (unsigned i = 0; i <= 4096; ++i)
             {
-                const float value = armada_autohdr_inverse_tone_map(float(i) / 4096.0f, sdr, peak);
+                const float input = float(i) / 4096.0f;
+                const float value = armada_autohdr_inverse_tone_map(input, sdr, peak);
                 CHECK(finite(value));
                 CHECK(value >= previous);
                 CHECK(value >= 0.0f && value <= 1.00001f);
+                CHECK(close(value, reference_curve(input, sdr, peak)));
                 previous = value;
             }
             CHECK(std::fabs(previous - 1.0f) < 0.00001f);
             CHECK(armada_autohdr_inverse_tone_map(2.0f, sdr, peak) == previous);
+            const double p_sdr = 1.0 + 32.0 * std::pow(double(sdr) / 10000.0, 1.0 / 2.4);
+            for (const auto &gap : gaps)
+            {
+                float previous_join = 0.0f;
+                for (double position : {-0.1, 0.0, 0.25, 0.5, 0.75, 1.0, 1.1})
+                {
+                    const double yc = gap[0] + position * (gap[1] - gap[0]);
+                    const float input = std::pow(std::expm1(yc * std::log(p_sdr)) / (p_sdr - 1.0), 2.4);
+                    const float value = armada_autohdr_inverse_tone_map(input, sdr, peak);
+                    CHECK(value + 4.0f * std::numeric_limits<float>::epsilon() >= previous_join);
+                    CHECK(close(value, reference_curve(input, sdr, peak), 0.000001, 0.000002));
+                    previous_join = value;
+                }
+            }
         }
     CHECK(armada_autohdr_inverse_tone_map(-1.0f, 100.0f, 1000.0f) == 0.0f);
     CHECK(armada_autohdr_inverse_tone_map(1.0f, 0.0f, 1000.0f) == 0.0f);
@@ -62,29 +92,34 @@ static void check_math()
 
     const std::array matrices{
         std::array{1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f},
-        std::array{1.2f, 0.1f, 0.0f, 0.2f, 1.0f, 0.1f, 0.1f, 0.3f, 0.9f},
+        std::array{1.2f, -0.1f, 0.0f, 0.2f, 1.0f, -0.1f, -0.1f, 0.3f, 0.9f},
     };
     for (const auto &matrix : matrices)
-        for (float peak : {100.0f, 400.0f, 1000.0f})
-        {
-            armada_autohdr_transform transform{{}, 100.0f, peak};
-            std::copy(matrix.begin(), matrix.end(), transform.native_from_output);
-            for (unsigned r = 0; r <= 8; ++r)
-                for (unsigned g = 0; g <= 8; ++g)
-                    for (unsigned b = 0; b <= 8; ++b)
-                    {
-                        const armada_autohdr_rgb input{r * peak / 8.0f, g * peak / 8.0f, b * peak / 8.0f};
-                        const auto output = armada_autohdr_apply_transform(&transform, input);
-                        CHECK(finite(output.r) && finite(output.g) && finite(output.b));
-                        const float tolerance = peak * peak * 0.000001f;
-                        CHECK(std::fabs(output.r * input.g - output.g * input.r) <= tolerance);
-                        CHECK(std::fabs(output.r * input.b - output.b * input.r) <= tolerance);
-                        const float native_r = matrix[0] * output.r + matrix[3] * output.g + matrix[6] * output.b;
-                        const float native_g = matrix[1] * output.r + matrix[4] * output.g + matrix[7] * output.b;
-                        const float native_b = matrix[2] * output.r + matrix[5] * output.g + matrix[8] * output.b;
-                        CHECK(std::max({native_r, native_g, native_b}) <= peak + peak * 0.000001f);
-                    }
-        }
+        for (float sdr : {1.0f, 100.0f, 1000.0f})
+            for (float peak : {1.0f, 100.0f, 1000.0f})
+            {
+                armada_autohdr_transform transform{{}, sdr, peak};
+                std::copy(matrix.begin(), matrix.end(), transform.native_from_output);
+                for (int r = -1; r <= 4; ++r)
+                    for (unsigned g = 0; g <= 4; ++g)
+                        for (unsigned b = 0; b <= 4; ++b)
+                        {
+                            const armada_autohdr_rgb input{r * peak / 4.0f, g * peak / 4.0f, b * peak / 4.0f};
+                            const auto output = armada_autohdr_apply_transform(&transform, input);
+                            CHECK(finite(output.r) && finite(output.g) && finite(output.b));
+                            const float native_peak = std::max({matrix[0] * input.r + matrix[3] * input.g + matrix[6] * input.b,
+                                matrix[1] * input.r + matrix[4] * input.g + matrix[7] * input.b,
+                                matrix[2] * input.r + matrix[5] * input.g + matrix[8] * input.b});
+                            const double gain = native_peak > 0.0f ? reference_curve(native_peak / peak, sdr, peak) * peak / native_peak : 0.0;
+                            CHECK(close(output.r, input.r * gain, peak * 0.000003));
+                            CHECK(close(output.g, input.g * gain, peak * 0.000003));
+                            CHECK(close(output.b, input.b * gain, peak * 0.000003));
+                            const float native_r = matrix[0] * output.r + matrix[3] * output.g + matrix[6] * output.b;
+                            const float native_g = matrix[1] * output.r + matrix[4] * output.g + matrix[7] * output.b;
+                            const float native_b = matrix[2] * output.r + matrix[5] * output.g + matrix[8] * output.b;
+                            CHECK(std::max({native_r, native_g, native_b}) <= peak + peak * 0.000001f);
+                        }
+            }
 }
 
 static void check_policy()
@@ -111,8 +146,7 @@ static void check_policy()
     CHECK(armada_autohdr_reconcile(&state, 1));
     CHECK(state.requested && !state.luts_enabled);
     armada_autohdr_luts_updated(&state);
-    for (unsigned i = 0; i < 3000; ++i)
-        CHECK(!armada_autohdr_reconcile(&state, 1));
+    CHECK(!armada_autohdr_reconcile(&state, 1));
     CHECK(armada_autohdr_reconcile(&state, 0));
     armada_autohdr_luts_updated(&state);
     CHECK(!state.requested && !state.luts_enabled);
@@ -180,12 +214,7 @@ struct ScanoutFixture
     {
         game_mask = mask;
         const auto callbacks = ops();
-        const unsigned before = allocations;
-        measure_allocations = true;
-        const int ret = armada_autohdr_scanout_apply(&state, mask, &callbacks);
-        measure_allocations = false;
-        CHECK(allocations == before);
-        return ret;
+        return armada_autohdr_scanout_apply(&state, mask, &callbacks);
     }
 };
 

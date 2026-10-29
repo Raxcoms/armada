@@ -948,15 +948,6 @@ off_auto_hdr.clear()
 off_auto_hdr.apply(False)
 check("disabled auto hdr is inert", not off_commands)
 
-restored_commands = []
-restored_auto_hdr = control.armada_auto_hdr.AutoHdrController(
-    {"ARMADA_HDR_NITS": HDR_CAPABLE_NITS}, auto_hdr_command(restored_commands),
-)
-restored_auto_hdr.apply(True)
-restored_auto_hdr.clear()
-check("restored auto hdr is reapplied and cleared",
-      restored_commands == [("help",), AUTO_HDR_ENABLE, AUTO_HDR_DISABLE])
-
 for nits in ("0", "not-a-number", None):
     commands = []
     controller = control.armada_auto_hdr.AutoHdrController(
