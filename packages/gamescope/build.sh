@@ -51,6 +51,8 @@ INSERT_LINE="$(
     printf "\n"
   fi
 
+  printf "BuildRequires: pkgconfig(armada-autohdr) >= 0.1.0\n\n"
+
   tail -n "+${INSERT_LINE}" "${SPEC}"
 } >"${SPEC}.tmp"
 
@@ -70,8 +72,6 @@ sed -i \
   -e "s/pkgconfig(wayland-protocols) >= 1.17/pkgconfig(wayland-protocols) >= 1.22/" \
   -e "s/^%caps(cap_sys_nice=eip) %{_bindir}\/gamescope$/%{_bindir}\/gamescope/" \
   "${SPEC}"
-
-bash /src/armada-autohdr/prepare-gamescope.sh "${SPEC}"
 
 dnf -y install /src/armada-autohdr-rpms/armada-autohdr-*.rpm
 

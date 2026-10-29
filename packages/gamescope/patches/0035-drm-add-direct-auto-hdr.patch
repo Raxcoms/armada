@@ -1,6 +1,6 @@
-From 19d7bce4905bcaf1fe7be5d7908873261eef9e9b Mon Sep 17 00:00:00 2001
+From 457711d34695c81d1e7849f021cfd42bfd90558e Mon Sep 17 00:00:00 2001
 From: Raxcoms <mpaulo968@gmail.com>
-Date: Thu, 29 Oct 2026 01:13:52 -0300
+Date: Thu, 29 Oct 2026 07:49:27 -0300
 Subject: [PATCH] gamescope: connect the standalone Armada AutoHDR library
 
 Supply device and game facts to the version 1 C API through a thin adapter.
@@ -14,35 +14,30 @@ Direct scanout and the normal composition fallback share that mapping.
 
 The adapter uses the native presentation/allocation path when disabled,
 with one cleanup when leaving AutoHDR. No extra GPU pass is introduced.
-Build against armada-autohdr development files and unpack the adapter
-archive before configuration. Update reviews must check the color-stage
-order, frame/layer contract, shader slots and libliftoff call boundary.
+Update reviews must check the color-stage order, frame/layer contract,
+shader slots and libliftoff call boundary.
 ---
- src/Backends/DRMBackend.cpp            | 38 ++++++++++++++--
- src/backend.h                          |  2 +
- src/color_helpers.cpp                  |  4 ++
- src/color_helpers.h                    |  8 ++++
- src/meson.build                        |  1 +
- src/rendervulkan.cpp                   |  9 +++-
- src/rendervulkan.hpp                   |  7 +--
- src/shaders/composite.h                |  9 ++--
- src/shaders/descriptor_set_constants.h |  3 +-
- src/steamcompmgr.cpp                   | 63 +++++++++++++++++++++++---
- 10 files changed, 123 insertions(+), 21 deletions(-)
+ src/Backends/DRMBackend.cpp            |  34 +++-
+ src/armada_autohdr.glsl                |  16 ++
+ src/armada_autohdr.h                   | 228 +++++++++++++++++++++++++
+ src/backend.h                          |   2 +
+ src/color_helpers.cpp                  |   4 +
+ src/color_helpers.h                    |   8 +
+ src/meson.build                        |   1 +
+ src/rendervulkan.cpp                   |   9 +-
+ src/rendervulkan.hpp                   |   7 +-
+ src/shaders/composite.h                |   9 +-
+ src/shaders/descriptor_set_constants.h |   3 +-
+ src/steamcompmgr.cpp                   |  63 ++++++-
+ 12 files changed, 363 insertions(+), 21 deletions(-)
+ create mode 100644 src/armada_autohdr.glsl
+ create mode 100644 src/armada_autohdr.h
 
 diff --git a/src/Backends/DRMBackend.cpp b/src/Backends/DRMBackend.cpp
-index 8ead53d..bdff057 100644
+index 8ead53d..d264147 100644
 --- a/src/Backends/DRMBackend.cpp
 +++ b/src/Backends/DRMBackend.cpp
-@@ -23,6 +23,7 @@
- #include <map>
- #include <mutex>
- #include <optional>
-+#include <ranges>
- #include <span>
- #include <string>
- #include <thread>
-@@ -61,6 +62,8 @@
+@@ -61,6 +61,8 @@
  #include "libdisplay-info/edid.h"
  #include "wlr_end.hpp"
  
@@ -51,7 +46,7 @@ index 8ead53d..bdff057 100644
  #include "gamescope-control-protocol.h"
  
  extern int g_nPreferredOutputWidth;
-@@ -149,8 +152,8 @@ struct drm_t {
+@@ -149,8 +151,8 @@ struct drm_t {
  		std::shared_ptr<gamescope::BackendBlob> output_lut3d;
  		bool output_luts_applied = false;
  		// AMD plane property blobs, or colorop DATA blobs when bPlaneLuts
@@ -62,7 +57,7 @@ index 8ead53d..bdff057 100644
  		amdgpu_transfer_function output_tf = AMDGPU_TRANSFER_FUNCTION_DEFAULT;
  	} current, pending;
  
-@@ -2787,6 +2790,8 @@ struct LiftoffStateCacheEntry
+@@ -2787,6 +2789,8 @@ struct LiftoffStateCacheEntry
  		GamescopeAppTextureColorspace colorspace;
  		AlphaBlendingMode_t eAlphaBlendingMode;
  		bool applyColorMgmt;
@@ -71,7 +66,7 @@ index 8ead53d..bdff057 100644
  	} layerState[ k_nMaxLayers ];
  
  	bool operator == (const LiftoffStateCacheEntry& entry) const
-@@ -2816,6 +2821,7 @@ struct LiftoffStateCacheEntryKasher
+@@ -2816,6 +2820,7 @@ struct LiftoffStateCacheEntryKasher
  			hash_combine(hash, k.layerState[i].colorRange);
  			hash_combine(hash, k.layerState[i].colorspace);
  			hash_combine(hash, k.layerState[i].eAlphaBlendingMode);
@@ -79,7 +74,7 @@ index 8ead53d..bdff057 100644
  		}
  
  		return hash;
-@@ -2936,7 +2942,9 @@ static int drm_set_plane_luts( struct drm_t *drm, const FrameInfo_t *frameInfo )
+@@ -2936,7 +2941,9 @@ static int drm_set_plane_luts( struct drm_t *drm, const FrameInfo_t *frameInfo )
  			continue;
  
  		// Not a layout failure, so kept out of the liftoff state cache.
@@ -90,7 +85,7 @@ index 8ead53d..bdff057 100644
  		if ( !drm->pending.shaperlut_id[ uEOTF ] || !drm->pending.lut3d_id[ uEOTF ] )
  			return -EAGAIN;
  
-@@ -3000,6 +3008,7 @@ LiftoffStateCacheEntry FrameInfoToLiftoffStateCacheEntry( struct drm_t *drm, con
+@@ -3000,6 +3007,7 @@ LiftoffStateCacheEntry FrameInfoToLiftoffStateCacheEntry( struct drm_t *drm, con
  		}
  		entry.layerState[i].eAlphaBlendingMode = frameInfo->layers.get( i ).eAlphaBlendingMode;
  		entry.layerState[i].applyColorMgmt = frameInfo->layers.get( i ).applyColorMgmt;
@@ -98,29 +93,19 @@ index 8ead53d..bdff057 100644
  	}
  
  	return entry;
-@@ -3952,6 +3961,9 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
- 		}
- 	}
- 
-+	const auto autoHdrPipelines = std::views::transform( drm->planes,
-+		[]( const auto &plane ) { return plane->GetLutPipeline(); } );
-+
- 	// liftoff's allocation tests must not inherit last frame's pipelines; a pipeline
- 	// set again below wins, as the last value of a property in a request does.
- 	for ( std::unique_ptr< gamescope::CDRMPlane > &pPlane : drm->planes )
-@@ -3964,7 +3976,10 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
+@@ -3964,7 +3972,10 @@ drm_prepare_liftoff( struct drm_t *drm, const struct FrameInfo_t *frameInfo, boo
  		.timeout_ns = std::numeric_limits<int64_t>::max()
  	};
  
 -	int ret = liftoff_output_apply( drm->lo_output, drm->req, drm->flags, &lo_options);
 +	static gamescope::AutoHdrScanout autoHdrScanout;
-+	int ret = autoHdrScanout.Apply( autoHdrPipelines,
++	int ret = autoHdrScanout.Apply( drm->planes,
 +		gamescope::AutoHdrPlaneMask( *frameInfo, drm->bPlaneLuts ), drm->lo_layers,
 +		drm->lo_output, drm->req, drm->flags, lo_options );
  
  	// The NVIDIA 555 series drivers started advertising DRM_CAP_SYNCOBJ, but do
  	// not support IN_FENCE_FD. However, there is no way to hide the IN_FENCE_FD
-@@ -4531,7 +4546,7 @@ static bool drm_update_plane_luts(struct drm_t *drm)
+@@ -4531,7 +4542,7 @@ static bool drm_update_plane_luts(struct drm_t *drm)
  	static constexpr uint32_t k_nLut3DSize = s_nLutEdgeSize3d * s_nLutEdgeSize3d * s_nLutEdgeSize3d;
  	auto ToLut32 = []( uint16_t val ) { return uint32_t( val ) * 0x10001u; };
  
@@ -129,7 +114,7 @@ index 8ead53d..bdff057 100644
  	{
  		const gamescope_color_mgmt_luts &luts = g_ColorMgmtLuts[e];
  		drm->pending.shaperlut_id[e] = nullptr;
-@@ -5572,6 +5587,19 @@ namespace gamescope
+@@ -5572,6 +5583,19 @@ namespace gamescope
  			return g_DRM.pending.output_degamma && g_DRM.pending.output_lut3d;
  		}
  
@@ -149,6 +134,262 @@ index 8ead53d..bdff057 100644
  		virtual bool SupportsOutputLUTs() const override
  		{
  			// The kernel exposes DPU_3D_LUT only where the DSPP LUT blocks are driven.
+diff --git a/src/armada_autohdr.glsl b/src/armada_autohdr.glsl
+new file mode 100644
+index 0000000..19fee2a
+--- /dev/null
++++ b/src/armada_autohdr.glsl
+@@ -0,0 +1,16 @@
++#ifndef ARMADA_AUTO_HDR_GLSL
++#define ARMADA_AUTO_HDR_GLSL
++
++uint auto_hdr_lut_index(uint originalLayer, uint inputEotf) {
++    // RCAS remaps offset slots; only the original game layer uses the extra LUT.
++    return originalLayer == 0 && textureQueryLevels(s_shaperLut[EOTF_Count]) != 0
++        ? EOTF_Count : inputEotf;
++}
++
++vec3 apply_layer_color_mgmt(vec3 color, uint offsetLayerIdx, uint colorspaceLayerIdx, uint colorspace);
++
++vec3 apply_layer_color_mgmt(vec3 color, uint layerIdx, uint colorspace) {
++    return apply_layer_color_mgmt(color, layerIdx, layerIdx, colorspace);
++}
++
++#endif
+diff --git a/src/armada_autohdr.h b/src/armada_autohdr.h
+new file mode 100644
+index 0000000..e571ad3
+--- /dev/null
++++ b/src/armada_autohdr.h
+@@ -0,0 +1,228 @@
++#pragma once
++
++#include <armada-autohdr.h>
++#include <span>
++
++#include "rendervulkan.hpp"
++#include "convar.h"
++
++#if HAVE_DRM
++extern "C" {
++#include <libliftoff.h>
++}
++#endif
++
++namespace gamescope
++{
++	struct AutoHdrTransform
++	{
++		armada_autohdr_transform params;
++
++		AutoHdrTransform( const glm::mat3 &nativeFromOutput, float sdrNits, float targetNits )
++			: params{ {}, sdrNits, targetNits }
++		{
++			for ( int column = 0; column < 3; column++ )
++				for ( int row = 0; row < 3; row++ )
++					params.native_from_output[column * 3 + row] = nativeFromOutput[column][row];
++		}
++
++		static AutoHdrTransform Create( const displaycolorimetry_t &display,
++			const displaycolorimetry_t &output, float sdrNits, float targetNits )
++		{
++			return {
++				display == output ? glm::mat3( 1.0f ) :
++					glm::inverse( normalised_primary_matrix( display.primaries, display.white, 1.0f ) ) *
++						normalised_primary_matrix( output.primaries, output.white, 1.0f ),
++				sdrNits, targetNits,
++			};
++		}
++
++		// Keep this transform alive until the synchronous LUT build finishes.
++		void Configure( tonemapping_t &tonemapping ) const
++		{
++			tonemapping.g22_luminance = params.target_nits;
++			tonemapping.preGainTransform = Apply;
++			tonemapping.preGainTransformData = this;
++		}
++
++		static glm::vec3 Apply( glm::vec3 color, const void *data )
++		{
++			const auto &transform = static_cast<const AutoHdrTransform *>( data )->params;
++			const auto mapped = armada_autohdr_apply_transform( &transform, { color.r, color.g, color.b } );
++			return { mapped.r, mapped.g, mapped.b };
++		}
++	};
++
++	inline bool AutoHdrPlaneUsesLuts( const FrameInfo_t::Layer_t &layer, bool hardwareLuts )
++	{
++		return layer.autoHdr && hardwareLuts && layer.applyColorMgmt &&
++			( layer.colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_SRGB ||
++			  layer.colorspace == GAMESCOPE_APP_TEXTURE_COLORSPACE_LINEAR );
++	}
++
++	inline uint32_t AutoHdrPlaneMask( const FrameInfo_t &frame, bool hardwareLuts )
++	{
++		uint32_t mask = 0;
++		for ( int i = 0; i < frame.layers.count(); i++ )
++			if ( AutoHdrPlaneUsesLuts( frame.layers.get( i ), hardwareLuts ) )
++				mask |= 1u << i;
++		return mask;
++	}
++
++	inline void BindAutoHdrCompositeLuts( const FrameInfo_t &frame, CVulkanCmdBuffer &cmdBuffer )
++	{
++		// Partial composition can omit the game while retaining its LUT pointers.
++		const bool enabled = frame.layers.count() && frame.layers.get( 0 ).autoHdr;
++		cmdBuffer.bindColorMgmtLuts( EOTF_Count,
++			enabled ? frame.shaperLut[EOTF_Count] : nullptr,
++			enabled ? frame.lut3D[EOTF_Count] : nullptr );
++	}
++
++	inline void ClearAutoHdrFrameLuts( FrameInfo_t &frame )
++	{
++		// Source-space captures keep the game's original SDR presentation.
++		frame.shaperLut[EOTF_Count] = nullptr;
++		frame.lut3D[EOTF_Count] = nullptr;
++	}
++
++	inline ConVar<bool> cv_armada_auto_hdr{ "armada_auto_hdr", false, "Enable inverse tone mapping for SDR games." };
++
++	class AutoHdrPresentation
++	{
++	public:
++		struct FrameState
++		{
++			bool active;
++			bool primary;
++			bool async;
++		};
++
++		bool Enabled() const { return cv_armada_auto_hdr; }
++
++		bool Available( const armada_autohdr_capabilities &caps ) const
++		{
++			return armada_autohdr_available( cv_armada_auto_hdr, &caps );
++		}
++
++		bool Active( bool available, const armada_autohdr_content &content ) const
++		{
++			return armada_autohdr_active( available, &content );
++		}
++
++		void ReconcileColorState( gamescope_color_mgmt_t &pending, bool enabled )
++		{
++			if ( !enabled && !m_state.requested && !m_state.luts_enabled )
++				return;
++			if ( armada_autohdr_reconcile( &m_state, enabled ) )
++				pending.externalDirtyCtr++;
++		}
++
++		template<typename BuildLuts>
++		void UpdateLuts( gamescope_color_mgmt_luts &luts,
++			const gamescope_color_mgmt_t &color, float sdrNits, BuildLuts build )
++		{
++			if ( !m_state.requested && !m_state.luts_enabled )
++				return;
++			luts.reset();
++			if ( m_state.requested )
++			{
++				const auto transform = AutoHdrTransform::Create( color.displayColorimetry,
++					color.outputEncodingColorimetry, sdrNits, color.flInternalDisplayBrightness );
++				build( luts, transform );
++			}
++			// The normal color-management serial covers the completed update.
++			armada_autohdr_luts_updated( &m_state );
++		}
++
++		int PresentFrame( IBackendConnector *connector, FrameInfo_t &frame,
++			const gamescope_color_mgmt_luts &luts, const FrameState &state )
++		{
++			const bool enabled = Enabled();
++			const bool hasLayers = enabled && frame.layers.count() != 0;
++			const bool converted = enabled && armada_autohdr_prepare( state.active,
++				frame.bFadingOut, hasLayers, luts.HasLuts(),
++				hasLayers && ColorspaceIsHDR( frame.layers.get( 0 ).colorspace ) );
++			if ( converted )
++			{
++				frame.layers.get( 0 ).autoHdr = true;
++				frame.shaperLut[EOTF_Count] = luts.vk_lut1d;
++				frame.lut3D[EOTF_Count] = luts.vk_lut3d;
++			}
++			if ( !enabled && state.primary && m_state.presented )
++				armada_autohdr_presented( &m_state, true, false, false );
++			const int ret = connector ? connector->Present( &frame, state.async ) : 0;
++			if ( enabled )
++				armada_autohdr_presented( &m_state, state.primary, connector && ret == 0, converted );
++			return ret;
++		}
++
++		template<typename Available, typename ContentActive>
++		void ExtendHdrOutput( bool &capable, bool &active,
++			Available available, ContentActive content ) const
++		{
++			if ( !Enabled() )
++				return;
++			const bool convertedContent = content();
++			capable = capable || available();
++			active |= convertedContent;
++		}
++
++		bool HdrPresented() const { return Enabled() && armada_autohdr_hdr_presented( &m_state ); }
++
++	private:
++		armada_autohdr_state m_state{};
++	};
++
++	inline AutoHdrPresentation g_AutoHdr;
++
++#if HAVE_DRM
++	class AutoHdrScanout
++	{
++	public:
++		template<typename Planes>
++		int Apply( const Planes &planes, uint32_t gameLayerMask,
++			std::span<liftoff_layer *const> layers, liftoff_output *output,
++			drmModeAtomicReq *request, uint32_t flags, const liftoff_output_apply_options &options )
++		{
++			if ( !gameLayerMask && !m_constraintsSet )
++				return liftoff_output_apply( output, request, flags, &options );
++			m_constraintsSet = gameLayerMask != 0;
++			struct Context
++			{
++				const Planes &planes;
++				std::span<liftoff_layer *const> layers;
++				liftoff_output *output;
++				drmModeAtomicReq *request;
++				uint32_t flags;
++				const liftoff_output_apply_options &options;
++			} context{ planes, layers, output, request, flags, options };
++
++			// Keep Gamescope's vendored libliftoff behind synchronous callbacks.
++			const armada_autohdr_scanout_ops ops{
++				.data = &context, .pipeline_count = planes.size(), .layer_count = layers.size(),
++				.pipeline = []( void *data, size_t index ) -> uint64_t {
++					return static_cast<Context *>( data )->planes[index]->GetLutPipeline();
++				},
++				.unset_pipeline = []( void *data, size_t layer ) {
++					liftoff_layer_unset_property( static_cast<Context *>( data )->layers[layer], "COLOR_PIPELINE" );
++				},
++				.set_pipeline = []( void *data, size_t layer, uint64_t pipeline ) {
++					liftoff_layer_set_property( static_cast<Context *>( data )->layers[layer], "COLOR_PIPELINE", pipeline );
++				},
++				.apply = []( void *data ) {
++					const auto &ctx = *static_cast<Context *>( data );
++					return liftoff_output_apply( ctx.output, ctx.request, ctx.flags, &ctx.options );
++				},
++				.needs_composition = []( void *data ) -> uint32_t {
++					return liftoff_output_needs_composition( static_cast<Context *>( data )->output );
++				},
++			};
++			return armada_autohdr_scanout_apply( &m_state, gameLayerMask, &ops );
++		}
++
++	private:
++		armada_autohdr_scanout_state m_state{};
++		bool m_constraintsSet = false;
++	};
++#endif
++}
 diff --git a/src/backend.h b/src/backend.h
 index fde91d5..0a653fa 100644
 --- a/src/backend.h
