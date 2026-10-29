@@ -71,6 +71,10 @@ sed -i \
   -e "s/^%caps(cap_sys_nice=eip) %{_bindir}\/gamescope$/%{_bindir}\/gamescope/" \
   "${SPEC}"
 
+bash /src/armada-autohdr/prepare-gamescope.sh "${SPEC}"
+
+dnf -y install /src/armada-autohdr-rpms/armada-autohdr-*.rpm
+
 # Fail in case spec is invalid
 rpmspec -P "${SPEC}" >/dev/null
 
